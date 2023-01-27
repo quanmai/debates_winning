@@ -78,6 +78,7 @@ def _preprocess(title_list, min_len: int = 3, ):
             # d['title_emb'] = title_embeddings
 
             arguments_embed_list = []
+            arguments_len_list = [] # to track argument length of each turn
             for round in debate['rounds']:
                 for side in round:
                     text = side['text']
@@ -87,16 +88,20 @@ def _preprocess(title_list, min_len: int = 3, ):
                     
                     sents_embeddings = sentence_embedding(sents)
                     arguments_embed_list.append(sents_embeddings)
+                    arguments_len_list.append(len(sents))
             # print(len(arguments_embed_list))
                 
             # node attribute
             # arguments_embed_list = list(itertools.chain(*arguments_embed_list)) # list of lists into a list
             d['graph'] = arguments_embed_list 
+            d['arg_len'] = arguments_len_list
             
             intra_sim_list, inter_sim_list = [], []
             for i in range(len(arguments_embed_list)-1):
                 intra_sim = cosine_similarity(arguments_embed_list[i])
                 inter_sim = cosine_similarity(arguments_embed_list[i], arguments_embed_list[i+1])
+
+                # TODO: have to get id to seperate among turns
                 intra_sim_list.append(intra_sim)
                 inter_sim_list.append(inter_sim)
 
