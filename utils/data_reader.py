@@ -11,12 +11,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sentence_embedding import sentence_embedding
 import pickle
 from config import config
-
+from .helpers import top_k_sparsify
 # QUO = '<quote>'
 # CORENLP_PATH = os.path.join('/Users/quanmai/Software/stanford-corenlp-4.5.1','*')
-# nlp = spacy.load("en_core_web_sm")
-
-
+# nlp = spacy.load("en_core_web_sm")    
 
 def _process_text(text: str) -> str:
     url = r'(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]{1,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)'
@@ -51,14 +49,9 @@ def _get_label(debate):
     else:
         return -1
 
-def _preprocess(title_list, min_len: int = 3, ):
-    r'''
-        Sentence embedding using BERT
-        - Edges are defined by cosine similarity among sentence
-        - Edges attributes:
-            - Could be Pearson correlation coefficients (later)
-
-    '''
+def _preprocess(title_list, min_len: int = 3, is_to_sparse=True):
+    """ Sentence embedding using BERT
+        Edges are defined by cosine similarity among sentence"""
     print(title_list)
 
     with open(config.filtered_f, 'r') as f:
@@ -97,16 +90,20 @@ def _preprocess(title_list, min_len: int = 3, ):
             d['arg_len'] = arguments_len_list
             
             intra_sim_list, inter_sim_list = [], []
-            for i in range(len(arguments_embed_list)-1):
-                intra_sim = cosine_similarity(arguments_embed_list[i])
-                inter_sim = cosine_similarity(arguments_embed_list[i], arguments_embed_list[i+1])
+            for i in range(len(arguments_embed_list)):
+                # kinda ugly, but efficient
+                intra_sim = cosine_similarity(arguments_embed_list[i]) # ndarray
+                if is_to_sparse:
+                    intra_sim = top_k_sparsify(intra_sim)
+                intra_sim_list.append(intra_sim) # list of ndarrays :D
+                if i != len(arguments_embed_list)-1:
+                    inter_sim = cosine_similarity(arguments_embed_list[i], arguments_embed_list[i+1])
+                    if is_to_sparse:
+                        inter_sim = top_k_sparsify(inter_sim)
+                    inter_sim_list.append(inter_sim)
 
-                # TODO: have to get id to seperate among turns
-                intra_sim_list.append(intra_sim)
-                inter_sim_list.append(inter_sim)
-
-            d['adj'] = {'intra_adj': intra_sim_list,
-                        'inter_adj': inter_sim_list}    
+            d['adj'] = {'intra_adj': intra_sim,
+                        'inter_adj': inter_sim}    
             d['label'] = _get_label(debate)
             d['turns'] = len(arguments_embed_list) // 2
             D.append(d)
