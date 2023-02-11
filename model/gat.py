@@ -46,7 +46,7 @@ class CrossGRU(nn.Module):
     def __init__(self, nfeat, nhid, nheads):
         super(CrossGRU, self).__init__()
         self.gru = GRUCell(nhid, nhid)
-        self.attn = GAT(#TODO: inputhere)
+        self.attn = GAT(#TODO: input here)
 
     def forward(self, g, h, t):
         """
@@ -87,6 +87,7 @@ class GAT(nn.Module):
 class DirectedGATLayer(nn.Module):
     """ Attention layer for cross-argument nodes.
         This is directed graph attention, which means dst_nodes pay attention to src_nodes.
+        We can view this as a bipartite graph, one side has N_(t-1) nodes, the other has N_(t)
         We do not shrink the dimension here: out_features = in_features.
     """
     def __init__(self, in_features, alpha):
