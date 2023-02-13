@@ -46,14 +46,14 @@ class CrossGRU(nn.Module):
     def __init__(self, nfeat, nhid, nheads):
         super(CrossGRU, self).__init__()
         self.gru = GRUCell(nhid, nhid)
-        self.attn = GAT(#TODO: input here)
+        self.attn = DirectedGATLayer(#TODO: input here)
 
     def forward(self, g, h, t):
         """
             1. Update node representation across the subgraph, acting as hidden
             2. Use GRU as gate
         """
-        _ = self.attn()
+        _ = self.attn(g, h, t)
         
         edge_id = g.filter_edges(lambda edges: edges.data['etype'] == 1, \
                                 lambda edges: edges.data['turn']==t) # cross_argument
@@ -86,12 +86,12 @@ class GAT(nn.Module):
 
 class DirectedGATLayer(nn.Module):
     """ Attention layer for cross-argument nodes.
-        This is directed graph attention, which means dst_nodes pay attention to src_nodes.
-        We can view this as a bipartite graph, one side has N_(t-1) nodes, the other has N_(t)
+        This is directed graph attention, which means dst-nodes pay attention to src-nodes.
+        We can define this as a bipartite graph, one side has N_(t-1) nodes, the other has N_(t)
         We do not shrink the dimension here: out_features = in_features.
     """
     def __init__(self, in_features, alpha):
-        super(CrossGATLayer, self).__init__()
+        super(DirectedGATLayer, self).__init__()
         self.leakyrelu = nn.LeakyReLU(alpha)
         self.W = nn.Parameter(torch.empty((in_features, in_features)))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
@@ -100,12 +100,24 @@ class DirectedGATLayer(nn.Module):
 
     def forward(self, g, t):
         """ Compute attention score from turn t to turn t-1 """
+        # TODO: Can we use dgl.subgraph() instead?
+
         edge_id = g.filter_edges(lambda edges: edges.data['etype'] == 1, \
                                 lambda edges: edges.data['turn']==t) # cross_argument
         # g.find_edges(eid): Given an edge ID array, return the source and destination node ID array s and d. 
-        # src_nodes acts like the hidden and dst_nodes acts like the input of GRU
-        _, dst_nodes = g.find_edges(edge_id) # na`ni' :-)?
-        pass
+        # Only update representation of destination node
+        # h_dst = h_src * W_attn
+        src_nodes, dst_nodes = g.find_edges(edge_id) # na`ni' :-)?
+
+        h_src = g.nodes[src_nodes].data['h']
+        h_dst = g.nodes[dst_nodes].data['h']
+
+        
+        Wh = torch.mm(h, self.W) # Wh = h x W
+
+        g.apply_edges(self._edge_attn, edges=edge_id)
+        g.pull(v=dst_nodes, message_func=self._message_func, reduce_func=self._reduce_func)
+        g.ndata.pop('Wh') # remove 'Wh'
 
     def _reduce_func(self, nodes):
         # mailbox: return the received messages
