@@ -42,27 +42,18 @@ class GRUCell(nn.Module):
 
         return h
 
-class CrossGRU(nn.Module):
+class CrossGAT(nn.Module):
     def __init__(self, nfeat, nhid, nheads):
-        super(CrossGRU, self).__init__()
+        super(CrossGAT, self).__init__()
         self.gru = GRUCell(nhid, nhid)
-        self.attn = DirectedGATLayer(#TODO: input here)
+        self.attn = DirectedGATLayer(nfeat, alpha=alpha)
 
     def forward(self, g, h, t):
         """
             1. Update node representation across the subgraph, acting as hidden
             2. Use GRU as gate
         """
-        _ = self.attn(g, h, t)
-        
-        edge_id = g.filter_edges(lambda edges: edges.data['etype'] == 1, \
-                                lambda edges: edges.data['turn']==t) # cross_argument
-        # g.find_edges(eid): Given an edge ID array, return the source and destination node ID array s and d. 
-        # src_nodes acts like the hidden and dst_nodes acts like the input of GRU
-        src_nodes, dst_nodes = g.find_edges(edge_id) # na`ni' :-)?
-        h = self.gru(dst_nodes.data['h'], src_nodes.data['h'])
-        return h
-
+       h = torch.cat()
 
 class GAT(nn.Module):
     """ Take, aggregate, plug back """
@@ -89,6 +80,8 @@ class DirectedGATLayer(nn.Module):
         This is directed graph attention, which means dst-nodes pay attention to src-nodes.
         We can define this as a bipartite graph, one side has N_(t-1) nodes, the other has N_(t)
         We do not shrink the dimension here: out_features = in_features.
+
+        TODO (try later): Attention mechanism using Key, Query & Value matrices
     """
     def __init__(self, in_features, alpha):
         super(DirectedGATLayer, self).__init__()
@@ -106,23 +99,26 @@ class DirectedGATLayer(nn.Module):
                                 lambda edges: edges.data['turn']==t) # cross_argument
         # g.find_edges(eid): Given an edge ID array, return the source and destination node ID array s and d. 
         # Only update representation of destination node
-        # h_dst = h_src * W_attn
         src_nodes, dst_nodes = g.find_edges(edge_id) # na`ni' :-)?
 
         h_src = g.nodes[src_nodes].data['h']
         h_dst = g.nodes[dst_nodes].data['h']
+        h = torch.cat((h_src, h_dst), dim=1)
+        assert h.shape[1] == src_nodes.shape[1]+dst_nodes.shape[1]
 
-        
         Wh = torch.mm(h, self.W) # Wh = h x W
-
         g.apply_edges(self._edge_attn, edges=edge_id)
         g.pull(v=dst_nodes, message_func=self._message_func, reduce_func=self._reduce_func)
-        g.ndata.pop('Wh') # remove 'Wh'
+        g.nodes[dst_nodes].data.pop('Wh')
+        h_prime = g.nodes[dst_nodes].data.pop('h_prime') # get h'
+        g.nodes[dst_nodes].data['h'] = h_prime
+        
+        return h_prime
 
     def _reduce_func(self, nodes):
         # mailbox: return the received messages
-        attention = F.softmax(node.mailbox['e'], dim=1)
-        h_prime = torch.sum(attention * nodes.mailbox['z'], dim=1)
+        attention = F.softmax(nodes.mailbox['e'], dim=1)
+        h_prime = torch.sum(attention * nodes.mailbox['Wh'], dim=1)
         return {'h_prime': h_prime}
 
     def _message_func(self, edges):
@@ -172,8 +168,8 @@ class GATLayer(nn.Module):
 
     def _reduce_func(self, nodes):
         # mailbox: return the received messages
-        attention = F.softmax(node.mailbox['e'], dim=1)
-        h_prime = torch.sum(attention * nodes.mailbox['z'], dim=1)
+        attention = F.softmax(nodes.mailbox['e'], dim=1)
+        h_prime = torch.sum(attention * nodes.mailbox['Wh'], dim=1)
         return {'h_prime': h_prime}
 
     def _message_func(self, edges):
