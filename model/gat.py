@@ -44,11 +44,11 @@ import math
 
 
 class CrossGAT(nn.Module):
-    def __init__(self, nfeat, nhid, nheads, alpha, dropout):
+    def __init__(self, nhid, nheads, alpha, dropout):
         super(CrossGAT, self).__init__()
         # TODO: check dimensions
         self.gru = nn.GRUCell(nhid, nhid)
-        self.attentions = [DirectedGATLayer(nfeat, alpha=alpha, dropout=dropout) for _ in nheads]
+        self.attentions = [DirectedGATLayer(nhid, alpha=alpha, dropout=dropout) for _ in nheads]
 
     def forward(self, g, t):
         edge_id = g.filter_edges(lambda edges: edges.data['etype'] == 1, \
