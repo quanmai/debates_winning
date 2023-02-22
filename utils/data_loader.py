@@ -6,10 +6,14 @@ from config import config
 from itertools import accumulate
 
 # https://www.dgl.ai/blog/2019/01/25/batch.html
+# https://discuss.dgl.ai/t/create-dataset-from-dglgraphs-in-memory/904/5
 
 class Dataset(data.Dataset):
     def __init__(self, data):
         self.data = data
+
+    def _load(self, filename):
+        pass
 
     def _add_node(self, G, turn, argument, offset=None):
         """ Add nodes & edges for each turn
@@ -54,7 +58,7 @@ class Dataset(data.Dataset):
         graph = self.create_graph(arg_embed, attn_list, cross_attn_list)
         return graph, label
 
-    def create_graph(self, arg_embed, attn_list, cross_attn_list ):
+    def create_graph(self, arg_embed, attn_list, cross_attn_list):
         """ Create graph for each conversation 
             We did not implement for speaker relation
             TODO: speaker information flow """

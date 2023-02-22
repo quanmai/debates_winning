@@ -15,7 +15,7 @@ class GraphArguments(nn.Module):
         self.attn1 = GAT(nfeat, nhid, nheads, alpha, dropout) # Debater#1
         self.attn2 = GAT(nfeat, nhid, nheads, alpha, dropout) # Debater#2
         self.counter_attn = CrossGAT(nhid, nheads, alpha, dropout) # CrossGAT does not change the dimension
-        self.score = nn.Linear(config.embed, 1)
+        self.score = nn.Linear(config.embed, 1) # real value score
         # self.classifier2 = nn.Linear(config.embed, nclass)
     
     def forward(self, g):
@@ -35,8 +35,9 @@ class GraphArguments(nn.Module):
         h1 = self._read_out(g, num_turns-2, op='mean')
         h2 = self._read_out(g, num_turns-1, op='mean')
         # Classification
-        s1 = F.log_softmax(self.score(h1))
-        s2 = F.log_softmax(self.score(h2))
+        # speaker#1 wins if s1>s2
+        s1 = F.log_softmax(F.relu(self.score(h1)))
+        s2 = F.log_softmax(F.relu(self.score(h2)))
         return s1, s2
     
     def _read_out(self, g, t, op='mean'):
