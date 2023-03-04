@@ -8,10 +8,11 @@ import random
 import json
 import math
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_embedding import sentence_embedding
+from utils.sentence_embedding import sentence_embedding
 import pickle
-from config import config
-from .helpers import top_k_sparsify
+from utils.config import config
+from utils.helpers import top_k_sparsify
+import os
 # QUO = '<quote>'
 # CORENLP_PATH = os.path.join('/Users/quanmai/Software/stanford-corenlp-4.5.1','*')
 # nlp = spacy.load("en_core_web_sm")    
@@ -49,7 +50,7 @@ def _get_label(debate):
     else:
         return -1
 
-def _preprocess(title_list, min_len: int = 3, is_to_sparse=True):
+def _preprocess(title_list, min_len: int = 3, is_to_sparse=False):
     """ Sentence embedding using BERT
         Edges are defined by cosine similarity among sentence"""
     print(title_list)
@@ -93,24 +94,24 @@ def _preprocess(title_list, min_len: int = 3, is_to_sparse=True):
             for i in range(len(arguments_embed_list)):
                 # kinda ugly, but efficient
                 intra_sim = cosine_similarity(arguments_embed_list[i]) # ndarray
-                if is_to_sparse:
-                    intra_sim = top_k_sparsify(intra_sim)
+                # if is_to_sparse:
+                #     intra_sim = top_k_sparsify(intra_sim)
                 intra_sim_list.append(intra_sim) # list of ndarrays :D
                 if i != len(arguments_embed_list)-1:
                     inter_sim = cosine_similarity(arguments_embed_list[i], arguments_embed_list[i+1])
-                    if is_to_sparse:
-                        inter_sim = top_k_sparsify(inter_sim)
+                    # if is_to_sparse:
+                    #     inter_sim = top_k_sparsify(inter_sim)
                     inter_sim_list.append(inter_sim)
 
-            d['adj'] = {'intra_adj': intra_sim,
-                        'inter_adj': inter_sim}    
+            d['adj'] = {'intra_adj': intra_sim_list,
+                        'inter_adj': inter_sim_list}    
             d['label'] = _get_label(debate)
             d['turns'] = len(arguments_embed_list) // 2
             D.append(d)
 
     return D
 
-def load_data(titles, seed=4):
+def generate_data(titles, seed=4):
     debates = _preprocess(titles)
     random.Random(seed).shuffle(debates)
     
@@ -125,6 +126,22 @@ def load_data(titles, seed=4):
         pickle.dump([train,dev,test], f)
 
     print('Done')
+
+def generate_data_test(titles, seed=4):
+    debates = _preprocess(titles[:3])
+    random.Random(seed).shuffle(debates)
+    
+    l = len(debates)
+    idx_train = int(0.6*l)
+    idx_dev = int(0.8*l)
+
+    train, dev, test = debates[0], debates[1], debates[2]
+
+    print('Dumping to files')
+    with open(config.proce_f, 'wb') as f:
+        pickle.dump([train,dev,test], f)
+
+    print('Done')
     
 def load_dataset():
     if os.path.exists(config.proce_f):
@@ -132,12 +149,11 @@ def load_dataset():
         with open(config.proce_f, 'rb') as f:
             train, dev, test = pickle.load(f)
         f.close()
-        
         return train, dev, test
     
     # generating file
-    # TODO: calling load_data
-    load_data()
+    # TODO: calling genrate_data()
+    generate_data()
 
 
 if __name__ == '__main__':
@@ -148,4 +164,4 @@ if __name__ == '__main__':
     titles = titles[:100]
     titles = [t.replace('\n','') for t in titles]
     
-    load_data(titles)
+    generate_data(titles)

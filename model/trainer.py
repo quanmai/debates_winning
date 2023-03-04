@@ -1,20 +1,20 @@
 import torch
-from .utils.data_reader import load_dataset
-from .utils.data_loader import Dataset, collate_fn
-from .utils.loss import PairBCELoss, PairHingeLoss
-from .model.model import GraphArguments
-from .utils.helpers import acc_score
+from utils.data_reader import load_dataset
+from utils.data_loader import ArgDataset, collate_fn
+from utils.loss import PairBCELoss, PairHingeLoss
+from model.model import GraphArguments
+from utils.helpers import acc_score
+from torch.utils.data import DataLoader
 
-from pytorch_lightning.core.lightning import LightningModule
+from pytorch_lightning import LightningModule
 
 class Train_GraphConversation(LightningModule):
     def __init__(self, config=None):
         super().__init__()
         self.config = config
-        
-        #TODO: implement utils.load_dataset()
         train_data, val_data, test_data = load_dataset()
-        self.train, self.val, self.test = Dataset(train_data), Dataset(val_data), Dataset(test_data)
+        self.train_data, self.val_data, self.test_data = ArgDataset(train_data), ArgDataset(val_data), ArgDataset(test_data)
+        print('HeyHeyHey')
         self.model = GraphArguments(config)
         self.loss = PairHingeLoss()
         self.acc_metric = acc_score
@@ -68,11 +68,13 @@ class Train_GraphConversation(LightningModule):
             epoch, result['val_loss,'], result['val_acc']))
 
     def train_dataloader(self):
-        train_loader = data.DataLoader(self.train, shuffle=True, num_workers=self.config.num_workers, \
+        print('Train dataloader')
+        train_loader = DataLoader(self.train_data, shuffle=self.config.shuffle, num_workers=self.config.num_workers, \
                         batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
         return train_loader
 
     def val_dataloader(self):
-        val_loader = data.DataLoader(self.val, shuffle=False, num_workers=self.config.num_workers, \
+        print('Val dataloader')
+        val_loader = DataLoader(self.val_data, shuffle=False, num_workers=self.config.num_workers, \
                         batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
         return val_loader

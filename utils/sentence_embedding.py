@@ -4,7 +4,7 @@ nltk.download('punkt')
 nltk.download('stopwords')
 from transformers import AutoTokenizer, AutoModel
 import torch
-from config import config
+from utils.config import config
 from sklearn.metrics.pairwise import cosine_similarity
 from string import punctuation
 
