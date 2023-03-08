@@ -27,8 +27,6 @@ class ArgDataset(Dataset):
         """
         speaker_id = turn%2 # 0 or 1
         num_nodes = len(argument)
-        # print(f'argument shape: {}')
-        # print(f"Hey, adding {num_nodes} node")
         node_feature = {}
         node_feature['speaker'] = torch.zeros(num_nodes, dtype=torch.int8) if speaker_id == 0 else torch.ones(num_nodes, dtype=torch.int8)
         node_feature['h'] = torch.tensor(argument)
@@ -41,35 +39,23 @@ class ArgDataset(Dataset):
         # pick top k similarity score
         adj = top_k_sparsify(adj, k=3)
         # add egdes
-        src, dst = np.nonzero(adj)
-        # print(f'src: {src}, dst: {dst}')
-        # print(adj)
-        # if src_offset==dst_offset: 
-        #     print(f'adj: {adj}')
-        #     print(f'src node: {src}')
-        #     print(f'dst node: {dst}')
+        dst, src = np.nonzero(adj) # dst is turn t, src is turn t-1 (b.c.of transposition)
         num_edges = src.shape[0]
-        # print(f'adding {num_edges} edges')
-        # if src_offset == dst_offset: #intra-argument edges
-        #     edge_type = torch.zeros(num_edges, dtype=torch.int8)
-        # else: #cross-arguments edges
-        #     edge_type = torch.ones(num_edges, dtype=torch.int8)
         edge_feature = {}
-        # edge_feature['etype'] = edge_type
         if src_offset == dst_offset:
             edge_feature['turn'] = torch.ones(num_edges, dtype=torch.int8)*turn
         else:
             edge_feature['turn'] = torch.ones(num_edges, dtype=torch.int8)*turn + torch.tensor(100)
-
         G.add_edges(src+src_offset, dst+dst_offset, data=edge_feature)
-        # breakpoint()
+
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         """ Get the idx-th sample
             return graph & corresponding label """
-        data = self.data[0] if config.debug else self.data[idx]
+        # data = self.data[0] if config.debug else self.data[idx]
+        data = self.data[idx]
         attn_list = data['adj']['intra_adj']
         cross_attn_list = data['adj']['inter_adj']
         arg_embed = data['graph']
@@ -86,7 +72,7 @@ class ArgDataset(Dataset):
 
         # offset: list of #sent in each turn/argument
         offset = [len(argument) for argument in arg_embed]
-        print(offset)
+        # print(offset)
         # calculate prefix sum
         # will be used as offset for edge construction
         # [1,3,5,9] -> [1,4,9,18]

@@ -7,19 +7,20 @@ def top_k_sparsify(A:np.ndarray, k: int = 3) -> np.ndarray:
         Edges defined by top-k value.
     """
     #TODO: Ugly implemented, have to improve it later!
-    # print(f'shape A: {A.shape}')
+    A = A.T
     adj = np.zeros_like(A)
-    prev, nxt = A.shape
-    # print(f'prev, nxt: {prev}, {nxt}')
-    idx = np.argsort(A, axis=1)
-    for i in range(prev):
-        for j in range(nxt):
-            if idx[i][j] >= nxt - k:
+    cur, prev = A.shape
+    idx = np.argsort(A, axis=-1)
+    for i in range(cur):
+        for j in range(prev):
+            if idx[i][j] >= prev - k:
                 adj[i][j] = 1
     return adj
 
 def acc_score(y_true, y_pred):
     total = 0
+    # print(f'y_true {y_true}')
+    # print(f'y_pred {y_pred}')
     for pred, label in zip(y_pred, y_true):
-       total += np.sum(  (pred > 0.5) == (label > 0.5)  ) / len(pred)
-    return total / len(y_pred)
+       total += torch.sum((pred > 0.5) == (label > 0.5)) / len(pred)
+    return total / y_pred.shape[0]

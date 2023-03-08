@@ -18,5 +18,5 @@ class PairHingeLoss(_Loss):
         super(PairHingeLoss, self).__init__()
 
     def forward(self, pos_logit, neg_logit):
-        loss = torch.max(0, 1 - pos_logit + neg_logit)
+        loss = torch.maximum(torch.tensor(0), 1 - pos_logit + neg_logit)
         return torch.mean(loss)

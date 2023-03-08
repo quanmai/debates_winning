@@ -49,32 +49,38 @@ class CrossGAT(nn.Module):
         super(CrossGAT, self).__init__()
         # TODO: check dimensions
         self.gru = nn.GRUCell(nhid, nhid)
-        self.attentions = [DirectedGATLayer(nhid, alpha=alpha, dropout=dropout) for _ in range(nheads)]
+        self.attentions = [DirectedGATLayer(nhid, nhid//nheads, alpha=alpha, dropout=dropout) for _ in range(nheads)]
 
     def forward(self, g, t):
-        edge_id = g.filter_edges(lambda edges: edges.data['etype'] == 1, \
-                                        lambda edges: edges.data['turn']==t)
+        # print('Doing CrossGAT')
+        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+100)
         _, dst_nodes = g.find_edges(edge_id)
+        dst_nodes = dst_nodes.unique()
+        # print(f'dst_nodes: {dst_nodes}')
 
         h = torch.cat([att(g, t) for att in self.attentions], dim=1)
         # only update dst node
-        feat = g.nodes[dst_nodes].data['h']
-        g.nodes[dst_nodes].data['h'] = self.gru(feat, h)
+        feat = g.nodes[dst_nodes].data['hp']
+        # print(f'h shape CGAT: {h.shape}')
+        # print(f'feat shape {feat.shape}')
+        g.nodes[dst_nodes].data['hp'] = self.gru(feat, h)
 
-        return g.nodes[dst_nodes].data['h']
+        return g.nodes[dst_nodes].data['hp']
 
 class GAT(nn.Module):
     """ Take, aggregate, plug back """
     def __init__(self, nfeat, nhid, nheads, alpha, dropout):
         super(GAT, self).__init__()
-        self.attentions = [GATLayer(nfeat, nhid, alpha=alpha, dropout=dropout) for _ in range(nheads)]
+        self.attentions = [GATLayer(nfeat, nhid//nheads, alpha=alpha, dropout=dropout) for _ in range(nheads)]
         for i, attn in enumerate(self.attentions):
             self.add_module('attention_{}'.format(i), attn)
 
     def forward(self, g, t):
+        # print('Doing GAT')
         node_id = g.filter_nodes(lambda nodes: nodes.data['ids']==t)
         h = torch.cat([att(g, t) for att in self.attentions], dim=1)
-        g.nodes[node_id].data['h'] = h
+        # g.nodes[node_id].data.pop('h')
+        g.nodes[node_id].data['hp'] = h
         return h
         
 
@@ -86,37 +92,37 @@ class DirectedGATLayer(nn.Module):
 
         TODO (try later): Attention mechanism using Key, Query & Value matrices
     """
-    def __init__(self, in_features, alpha, dropout):
+    def __init__(self, in_features, out_features, alpha, dropout):
         super(DirectedGATLayer, self).__init__()
         self.leakyrelu = nn.LeakyReLU(alpha)
-        self.W = nn.Parameter(torch.empty((in_features, in_features)))
+        self.W = nn.Parameter(torch.empty((in_features, out_features)))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
-        self.a = nn.Parameter(torch.empty((2*in_features, 1)))
+        self.a = nn.Parameter(torch.empty((2*out_features, 1)))
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
         self.dropout = dropout
+        self.out_features = out_features
 
     def forward(self, g, t):
         """ Compute attention score from turn t to turn t-1 """
         # TODO: Can we use dgl.subgraph() instead? Rep: Later
 
-        edge_id = g.filter_edges(lambda edges: edges.data['etype'] == 1, \
-                                lambda edges: edges.data['turn']==t) # cross_argument
+        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+100) # cross_argument
         # g.find_edges(eid): Given an edge ID array, return the source and destination node ID array s and d. 
         # Only update representation of destination node
         src_nodes, dst_nodes = g.find_edges(edge_id)
-        h_src = g.nodes[src_nodes].data['h']
-        h_dst = g.nodes[dst_nodes].data['h']
-        h = torch.cat((h_src, h_dst), dim=1)
+        src_nodes, dst_nodes = src_nodes.unique(), dst_nodes.unique()
+        node_id = torch.cat((src_nodes, dst_nodes), dim=0)
+        h = g.nodes[node_id].data['hp']
         h = F.dropout(h, self.dropout, training=self.training)
-        assert h.shape[1] == src_nodes.shape[1]+dst_nodes.shape[1]
 
         Wh = torch.mm(h, self.W) # Wh = h x W
+        g.nodes[node_id].data['Wh'] = Wh
+
         g.apply_edges(self._edge_attn, edges=edge_id)
         g.pull(v=dst_nodes, message_func=self._message_func, reduce_func=self._reduce_func)
         g.nodes[dst_nodes].data.pop('Wh')
         h_prime = g.nodes[dst_nodes].data.pop('h_prime') # get h'
-        # g.nodes[dst_nodes].data['h'] = h_prime # will assign in multi-head
-        return h_prime[dst_nodes]
+        return h_prime
 
     def _reduce_func(self, nodes):
         # mailbox: return the received messages
@@ -134,7 +140,7 @@ class DirectedGATLayer(nn.Module):
         # e = e_1 + e_2
         Wh1 = torch.matmul(edges.src['Wh'], self.a[:self.out_features, :])
         Wh2 = torch.matmul(edges.dst['Wh'], self.a[self.out_features:, :])
-        e = Wh1 + Wh2.T
+        e = Wh1 + Wh2
         return {'e': self.leakyrelu(e)}
 
 
@@ -157,22 +163,22 @@ class GATLayer(nn.Module):
     def forward(self, g, t):
         # h is nodes feature, h0 = x
         # ALWAYS `specify` NODE_IDS
-        print(f'at time step: {t}')
+        # print(f'at time step: {t}')
         node_id = g.filter_nodes(lambda nodes: nodes.data['ids']==t)
         edge_id = g.filter_edges(lambda edges: edges.data['turn']==t) # intra_argument
         # edge_id = g.filter_edges(lambda edges: )
-        print(f'node_id: {node_id}')
-        print(f'edge_id: {edge_id}')
-        print(f'edge_turn: {g.edges[edge_id].data["turn"]}')
+        # print(f'node_id: {node_id}')
+        # print(f'edge_id: {edge_id}')
+        # print(f'edge_turn: {g.edges[edge_id].data["turn"]}')
         # print(g.nodes[node_id].data)
         h = g.nodes[node_id].data['h']
-        print(f'W shape: {self.W.shape}')
-        print(f'h shape: {h.shape}')
+        # print(f'W shape: {self.W.shape}')
+        # print(f'h shape: {h.shape}')
         h = F.dropout(h, self.dropout, training=self.training)
         Wh = torch.mm(h, self.W) # Wh = h x W
 
         g.nodes[node_id].data['Wh'] = Wh
-        print(f'WH shape: {Wh.shape}')
+        # print(f'WH shape: {Wh.shape}')
         g.apply_edges(self._edge_attn, edges=edge_id)
         g.pull(v=node_id, message_func=self._message_func, reduce_func=self._reduce_func)
         g.ndata.pop('Wh') # remove 'Wh'
@@ -182,9 +188,9 @@ class GATLayer(nn.Module):
 
     def _reduce_func(self, nodes):
         # mailbox: return the received messages
-        print(nodes.mailbox['e'].shape)
+        # print(nodes.mailbox['e'].shape)
         attention = F.softmax(nodes.mailbox['e'], dim=1)
-        print(f'attention shape: {attention.shape}')
+        # print(f'attention shape: {attention.shape}')
         h_prime = torch.sum(attention * nodes.mailbox['Wh'], dim=1)
         return {'h_prime': h_prime}
 
@@ -197,14 +203,7 @@ class GATLayer(nn.Module):
         # e = e_1 + e_2
         Wh1 = torch.matmul(edges.src['Wh'], self.a[:self.out_features, :])
         Wh2 = torch.matmul(edges.dst['Wh'], self.a[self.out_features:, :])
-        e = Wh1 + Wh2.T
-        print(edges)
-        print(edges.src)
-        print(f"edge.src[Wh] shape: {edges.src['Wh'].shape}")
-        print(f"edge.dst[Wh] shape: {edges.dst['Wh'].shape}")
-        print(f'Wh1 shape: {Wh1.shape}')
-        print(f'Wh2 shape: {Wh2.shape}')
-        print(f'e shape: {e.shape}')
+        e = Wh1 + Wh2
         return {'e': self.leakyrelu(e)}
     
     def _edge_filter(self, edges):

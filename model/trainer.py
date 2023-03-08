@@ -34,7 +34,7 @@ class Train_GraphConversation(LightningModule):
             return optimizer, scheduler
 
     def forward(self, g):
-        self.model(g)
+        return self.model(g)
 
     def training_step(self, batch, batch_idx):
         g, y = batch
@@ -44,11 +44,12 @@ class Train_GraphConversation(LightningModule):
         s1 = s1 * y
         s1 = s2 * y
         loss = self.loss(s1, s2)
-        return {'train_loss': loss}
+        return {'loss': loss}
 
     def validation_step(self, batch, batch_idx):
         g, y = batch
         s1, s2 = self(g)
+        print(f's1, s2: {s1,s2}')
         s1 = s1 * y
         s1 = s2 * y
         loss = self.loss(s1, s2)
@@ -61,7 +62,8 @@ class Train_GraphConversation(LightningModule):
     def validation_epoch_end(self, outputs):
         loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         acc = torch.stack([x['acc'] for x in outputs]).mean()
-        return {'val_loss': loss.items(), 'val_acc': acc.item()}
+        print('val_loss: {:.4f}, val_acc: {:.4f}'.format(loss.item(), acc))
+        return {'val_loss': loss.item(), 'val_acc': acc}
 
     def epoch_end(self, epoch, result):
         print('Epoch [{}], val_loss: {:.4f}, val_acc: {:.4f}'.format( \
@@ -70,11 +72,11 @@ class Train_GraphConversation(LightningModule):
     def train_dataloader(self):
         print('Train dataloader')
         train_loader = DataLoader(self.train_data, shuffle=self.config.shuffle, num_workers=self.config.num_workers, \
-                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False)
         return train_loader
 
     def val_dataloader(self):
         print('Val dataloader')
         val_loader = DataLoader(self.val_data, shuffle=False, num_workers=self.config.num_workers, \
-                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
-        return val_loader
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False)
+        return val_loader    

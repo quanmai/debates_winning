@@ -5,7 +5,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', type=str, default='dataset/')
-parser.add_argument('--nhid', type=int, default=64)
+parser.add_argument('--nhid', type=int, default=256)
 parser.add_argument('--nhead', type=int, default=4)
 parser.add_argument('--alpha', type=float, default=0.02, help='leaky relu slope' )
 parser.add_argument('--dropout', type=float, default=0.1, help='Dropout prob')
@@ -59,6 +59,7 @@ class Config:
         self.is_suport = not self.not_support
         self.nfeat = 768 # Bert last hidden layer
         self.num_workers = 64
+        self.shuffle = True # shuffle Training dataset
         if self.debug:
             self.batch_size = 1 # set batch-size to 1
             self.dropout = 0 # no dropout
