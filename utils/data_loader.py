@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from utils.config import config
 from itertools import accumulate
 import numpy as np
-from utils.helpers import top_k_sparsify
+from utils.helpers import top_k_sparsify, threshold_sparsity
 
 # https://www.dgl.ai/blog/2019/01/25/batch.html
 # https://discuss.dgl.ai/t/create-dataset-from-dglgraphs-in-memory/904/5
@@ -18,13 +18,7 @@ class ArgDataset(Dataset):
         pass
 
     def _add_node(self, G, turn, argument, offset=None):
-        """ Add nodes & edges for each turn
-            Edges are added to corresponding pair of node 
-            
-            G: dgl.graph
-            argument: list[sent_emb]
-            offset: 
-        """
+        """ Add nodes & edges for each turn """
         speaker_id = turn%2 # 0 or 1
         num_nodes = len(argument)
         node_feature = {}
@@ -32,12 +26,11 @@ class ArgDataset(Dataset):
         node_feature['h'] = torch.tensor(argument)
         node_feature['ids'] = torch.ones(num_nodes, dtype=torch.int8)*turn
         G.add_nodes(num=num_nodes, data=node_feature)
-        # print(f"Current # nodes: {G.num_nodes()}")
-        # print(G.ndata['h'])
 
     def _add_edges(self, G, adj: np.ndarray, src_offset, dst_offset, turn):
         # pick top k similarity score
-        adj = top_k_sparsify(adj, k=3)
+        # adj = top_k_sparsify(adj, k=3)
+        adj = threshold_sparsity(adj, thres=0.7)
         # add egdes
         dst, src = np.nonzero(adj) # dst is turn t, src is turn t-1 (b.c.of transposition)
         num_edges = src.shape[0]
@@ -60,6 +53,7 @@ class ArgDataset(Dataset):
         cross_attn_list = data['adj']['inter_adj']
         arg_embed = data['graph']
         label = data['label']
+        if label==0: label=-1
         graph = self.create_graph(arg_embed, attn_list, cross_attn_list)
         return graph, label
 
@@ -72,24 +66,15 @@ class ArgDataset(Dataset):
 
         # offset: list of #sent in each turn/argument
         offset = [len(argument) for argument in arg_embed]
-        # print(offset)
-        # calculate prefix sum
-        # will be used as offset for edge construction
+        # calculate prefix sum, will be used as offset for edge construction
         # [1,3,5,9] -> [1,4,9,18]
         offset = list(accumulate(offset))
-        # print(offset)
         for turn, argument in enumerate(arg_embed):
             self._add_node(G, turn, argument)
         assert G.num_nodes() == offset[-1], \
                 f"Fail constructing graph, #nodes = {G.num_nodes()}, get {offset[-1]} !"
 
-        # Edge adding by g.add_edges([scr_nodes], [dst_nodes], {edge_feature})
-        # Or we can use ADJ matrices!!
-        # e.g., with first turn, #sents = 10, offset = 0
-        # source = list(range(offset, offset+#sents))
-        # g = dgl.add_edges(g, source, source, {'feature': intr_adj} )
         # https://github.com/dmlc/dgl/issues/3364
-
         for i in range(len(attn_list)):
             attn = attn_list[i]
             o = 0 if i==0 else offset[i-1]  # [1,4,9,18] -> [0,1,4,9]
@@ -98,7 +83,6 @@ class ArgDataset(Dataset):
                 cross_attn = cross_attn_list[i]
                 # print(f'cross_attn: {cross_attn}')
                 self._add_edges(G, cross_attn, o, offset[i], i)
-        # print(f'num_edges: {G.num_edges()}')
         return G
     
 def collate_fn(data):

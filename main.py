@@ -8,7 +8,7 @@ if __name__ == "__main__":
     model = Train_GraphConversation(config)
     trainer_config = dict(
         fast_dev_run=False,
-        max_epochs=2,
+        max_epochs=20,
         check_val_every_n_epoch=1,
         log_every_n_steps=1,
         accelerator='cpu',

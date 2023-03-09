@@ -5,6 +5,7 @@ from utils.loss import PairBCELoss, PairHingeLoss
 from model.model import GraphArguments
 from utils.helpers import acc_score
 from torch.utils.data import DataLoader
+import dgl
 
 from pytorch_lightning import LightningModule
 
@@ -16,7 +17,7 @@ class Train_GraphConversation(LightningModule):
         self.train_data, self.val_data, self.test_data = ArgDataset(train_data), ArgDataset(val_data), ArgDataset(test_data)
         print('HeyHeyHey')
         self.model = GraphArguments(config)
-        self.loss = PairHingeLoss()
+        self.loss = PairBCELoss()
         self.acc_metric = acc_score
 
     def configure_optimizers(self):
@@ -38,24 +39,23 @@ class Train_GraphConversation(LightningModule):
 
     def training_step(self, batch, batch_idx):
         g, y = batch
+        loss = []
         s1, s2 = self(g) # = self.forward(g)
         # element-wise product: y*s, 
         # y=1 (winner) -> s, y=-1 (loser) -> -s
-        s1 = s1 * y
-        s1 = s2 * y
-        loss = self.loss(s1, s2)
+        loss = self.loss(s1*y, s2*y)
         return {'loss': loss}
 
     def validation_step(self, batch, batch_idx):
         g, y = batch
         s1, s2 = self(g)
+        loss = self.loss(s1*y, s2*y)
+        # pred = s1>s2 
+        # pred = torch.where(pred == 0, -1, 1)
+        print(f'y: {y}')
         print(f's1, s2: {s1,s2}')
-        s1 = s1 * y
-        s1 = s2 * y
-        loss = self.loss(s1, s2)
-        pred = (s1>s2).int() #.squueze()
+        pred = torch.where(s1>s2, 1, -1)
         acc = self.acc_metric(y, pred)
-
         return {'val_loss': loss,
                 'acc': acc}
 
@@ -71,7 +71,7 @@ class Train_GraphConversation(LightningModule):
 
     def train_dataloader(self):
         print('Train dataloader')
-        train_loader = DataLoader(self.train_data, shuffle=self.config.shuffle, num_workers=self.config.num_workers, \
+        train_loader = DataLoader(self.train_data, shuffle=True, num_workers=self.config.num_workers, \
                         batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False)
         return train_loader
 

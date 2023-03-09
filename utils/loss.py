@@ -2,9 +2,7 @@ import torch
 from torch.nn.modules.loss import _Loss
 
 class PairBCELoss(_Loss):
-    """
-    Pairwise Logistic function
-    """
+    """ Pairwise Logistic function """
     def __init__(self):
         super(PairBCELoss, self).__init__()
 
