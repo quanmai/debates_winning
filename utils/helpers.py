@@ -17,17 +17,15 @@ def top_k_sparsify(A:np.ndarray, k: int = 3) -> np.ndarray:
                 adj[i][j] = 1
     return adj
 
-def threshold_sparsity(A, thres: float = 0.5):
+def threshold_sparsity(A, thres=0.5):
     """
         Sparsify the adj matrix in thresholding fashion
         i.e., a connection is defined if the edge values >= threshold value
     """
-
     A = A.T
     return np.where(A>=thres, 1, 0)
 
 def acc_score(y_true, y_pred):
-    total = 0
-    for pred, label in zip(y_pred, y_true):
-       total += torch.sum((pred > 0.5) == (label > 0.5))
-    return total / y_pred.shape[0]
+    return torch.sum(y_true==y_pred) / y_pred.shape[0]
+
+# def f1_score(y_true, y_pred):

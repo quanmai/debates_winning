@@ -24,6 +24,8 @@ def _process_text(text: str) -> str:
     text = re.sub(r'-?\d+(\.\d+)?(?!\w)', ' [NUM] ', text)
     text = re.sub(r'[-+]?.?[0-9]+[a-zA-Z]*', ' [NUM] ', text) #like 19th
     text = re.sub(r"&gt;.*\n\n", ' [QUOTE] ', text)
+    text = re.sub(r'\r\n', '', text)
+    # text = re.sub(r'\r\n', '', text)
     text = text.lower()
 
     for k, v in config.word_pairs.items():
@@ -63,6 +65,7 @@ def _preprocess(title_list, min_len: int = 3, is_to_sparse=False):
     # debate = debates['rounds']
     for key, debate in debates.items():
         if key in title_list:
+            low_qual = False # flag for low-quality argument
             print('Processing debates: {}'.format(key))
             d = {}
             
@@ -78,11 +81,16 @@ def _preprocess(title_list, min_len: int = 3, is_to_sparse=False):
                     text = side['text']
                     text = _process_text(text)
                     sents = nltk.tokenize.sent_tokenize(text)
-                    sents = [s for s in sents if len(s.split(' ')) > min_len]
-                    
+                    sents = [s for s in sents if len([w for w in s.split(' ') if w.isalpha()]) > min_len]
+                    # print(sents)
+                    if not sents: # low quality arguments
+                        low_qual = True
+                        break
                     sents_embeddings = sentence_embedding(sents)
                     arguments_embed_list.append(sents_embeddings)
                     arguments_len_list.append(len(sents))
+            if low_qual:
+                continue
             # print(len(arguments_embed_list))
                 
             # node attribute
@@ -90,31 +98,29 @@ def _preprocess(title_list, min_len: int = 3, is_to_sparse=False):
             d['graph'] = arguments_embed_list 
             d['arg_len'] = arguments_len_list
             
-            intra_sim_list, inter_sim_list = [], []
+            intra_sim_list, counter_sim_list, support_sim_list = [], [], []
             for i in range(len(arguments_embed_list)):
-                # kinda ugly, but efficient
                 intra_sim = cosine_similarity(arguments_embed_list[i]) # ndarray
-                # if is_to_sparse:
-                #     intra_sim = top_k_sparsify(intra_sim)
                 intra_sim_list.append(intra_sim) # list of ndarrays :D
                 if i != len(arguments_embed_list)-1:
-                    inter_sim = cosine_similarity(arguments_embed_list[i], arguments_embed_list[i+1])
-                    # if is_to_sparse:
-                    #     inter_sim = top_k_sparsify(inter_sim)
-                    inter_sim_list.append(inter_sim)
+                    counter_sim = cosine_similarity(arguments_embed_list[i], arguments_embed_list[i+1])
+                    counter_sim_list.append(counter_sim)
+                if i < len(arguments_embed_list)-2:
+                    support_sim = cosine_similarity(arguments_embed_list[i], arguments_embed_list[i+2])
+                    support_sim_list.append(support_sim)
 
             d['adj'] = {'intra_adj': intra_sim_list,
-                        'inter_adj': inter_sim_list}    
+                        'counter_adj': counter_sim_list, 
+                        'support_adj': support_sim_list}    
             d['label'] = _get_label(debate)
             d['turns'] = len(arguments_embed_list) // 2
             D.append(d)
 
     return D
 
-def generate_data(titles, seed=4):
+def generate_data(titles, seed=42):
     debates = _preprocess(titles)
     random.Random(seed).shuffle(debates)
-    
     l = len(debates)
     idx_train = int(0.6*l)
     idx_dev = int(0.8*l)
@@ -122,7 +128,7 @@ def generate_data(titles, seed=4):
     train, dev, test = debates[:idx_train], debates[idx_train:idx_dev], debates[idx_dev:]
 
     print('Dumping to files')
-    with open(config.proce_f, 'wb') as f:
+    with open(config.proce_full, 'wb') as f:
         pickle.dump([train,dev,test], f)
 
     print('Done')
@@ -161,7 +167,7 @@ if __name__ == '__main__':
     with open('title.txt','r') as rf:
         titles = rf.readlines()
     
-    titles = titles[:100]
+    # titles = titles[:100]
     titles = [t.replace('\n','') for t in titles]
     
     generate_data(titles)

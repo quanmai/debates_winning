@@ -12,6 +12,7 @@ class GraphArguments(nn.Module):
         self.attn1 = GAT(config.nfeat, config.nhid, config.nhead, config.alpha, config.dropout) # Debater#1
         self.attn2 = GAT(config.nfeat, config.nhid, config.nhead, config.alpha, config.dropout) # Debater#1
         self.counter_attn = CrossGAT(config.nhid, config.nhead, config.alpha, config.dropout) # CrossGAT does not change the dimension
+        self.support_attn = CrossGAT(config.nhid, config.nhead, config.alpha, config.dropout) # CrossGAT does not change the dimension
         self.fc = nn.Linear(config.nhid, config.nhid*2) # real value score
         self.score = nn.Linear(config.nhid*2, 1) # real value score
     
@@ -27,7 +28,9 @@ class GraphArguments(nn.Module):
             self.attn1(g,t) if speaker==0 else self.attn2(g,t)
             # Then Counter attn
             if self.config.is_counter and t > 0:
-                h = self.counter_attn(g, t-1)
+                _ = self.counter_attn(g, t-1, 'counter')
+            if self.config.is_support and t > 1:
+                _ = self.support_attn(g, t-2, 'support')
         # read-out
         # with g.local_scope():
         h1 = self._read_out(g, -2, op='mean')

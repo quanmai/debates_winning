@@ -11,12 +11,13 @@ class CrossGAT(nn.Module):
         self.gru = nn.GRUCell(nhid, nhid)
         self.attentions = [DirectedGATLayer(nhid, nhid//nheads, alpha=alpha, dropout=dropout) for _ in range(nheads)]
 
-    def forward(self, g, t):
-        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+100)
+    def forward(self, g, t, itype):
+        offset = 100 if itype == 'counter' else 200
+        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+offset)
         _, dst_nodes = g.find_edges(edge_id)
         dst_nodes = dst_nodes.unique()
 
-        h = torch.cat([att(g, t) for att in self.attentions], dim=1)
+        h = torch.cat([att(g, t, offset) for att in self.attentions], dim=1)
         # only update dst node
         feat = g.nodes[dst_nodes].data['hp']
         g.nodes[dst_nodes].data['hp'] = self.gru(feat, h)
@@ -56,11 +57,10 @@ class DirectedGATLayer(nn.Module):
         self.dropout = dropout
         self.out_features = out_features
 
-    def forward(self, g, t):
+    def forward(self, g, t, offset):
         """ Compute attention score from turn t to turn t-1 """
         # TODO: Can we use dgl.subgraph() instead? Rep: Later
-
-        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+100) # cross_argument
+        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+offset) # cross_argument
         # g.find_edges(eid): Given an edge ID array, return the source and destination node ID array s and d. 
         # Only update representation of destination node
         src_nodes, dst_nodes = g.find_edges(edge_id)
@@ -68,7 +68,9 @@ class DirectedGATLayer(nn.Module):
         node_id = torch.cat((src_nodes, dst_nodes), dim=0)
         h = g.nodes[node_id].data['hp']
         h = F.dropout(h, self.dropout, training=self.training)
-
+    
+        # print(h.is_cuda)
+        # print(self.W.is_cuda)
         Wh = torch.mm(h, self.W) # Wh = h x W
         g.nodes[node_id].data['Wh'] = Wh
 

@@ -15,9 +15,10 @@ class Train_GraphConversation(LightningModule):
         self.config = config
         train_data, val_data, test_data = load_dataset()
         self.train_data, self.val_data, self.test_data = ArgDataset(train_data), ArgDataset(val_data), ArgDataset(test_data)
-        print('HeyHeyHey')
         self.model = GraphArguments(config)
+        # if config.bce
         self.loss = PairBCELoss()
+        # self.loss = PairHingeLoss() # this always cause negative s1
         self.acc_metric = acc_score
 
     def configure_optimizers(self):
@@ -39,7 +40,6 @@ class Train_GraphConversation(LightningModule):
 
     def training_step(self, batch, batch_idx):
         g, y = batch
-        loss = []
         s1, s2 = self(g) # = self.forward(g)
         # element-wise product: y*s, 
         # y=1 (winner) -> s, y=-1 (loser) -> -s
@@ -52,18 +52,52 @@ class Train_GraphConversation(LightningModule):
         loss = self.loss(s1*y, s2*y)
         # pred = s1>s2 
         # pred = torch.where(pred == 0, -1, 1)
-        print(f'y: {y}')
-        print(f's1, s2: {s1,s2}')
+        # print(f's1: {s1}')
+        # print(f's2: {s2}')
         pred = torch.where(s1>s2, 1, -1)
+        # print(f'y: {y}')
+        # print(f'p: {pred}')
         acc = self.acc_metric(y, pred)
-        return {'val_loss': loss,
-                'acc': acc}
+        log = {'val_loss': loss, 'val_acc': acc}
+        self.log_dict(log)
+
+        return {
+                'val_loss': loss,
+                'val_acc': acc
+                }
+
+    def test_step(self, batch, batch_idx):
+        g, y = batch
+        s1, s2 = self(g)
+        loss = self.loss(s1*y, s2*y)
+        print(f's1: {s1}')
+        print(f's2: {s2}')
+        pred = torch.where(s1>s2, 1, -1)
+        print(f'y: {y}')
+        print(f'p: {pred}')
+        acc = self.acc_metric(y, pred)
+        return {'test_loss': loss,
+                'test_acc': acc}
 
     def validation_epoch_end(self, outputs):
         loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        acc = torch.stack([x['acc'] for x in outputs]).mean()
+        acc = torch.stack([x['val_acc'] for x in outputs]).mean()
         print('val_loss: {:.4f}, val_acc: {:.4f}'.format(loss.item(), acc))
-        return {'val_loss': loss.item(), 'val_acc': acc}
+        tensorboard_logs = {
+            'val_loss': loss,
+            'val_acc': acc
+        }
+        return {
+            'progress_bar': tensorboard_logs,
+            'val_loss': loss.item(), 
+            'val_acc': acc
+            }
+
+    def test_epoch_end(self, outputs):
+        loss = torch.stack([x['test_loss'] for x in outputs]).mean()
+        acc = torch.stack([x['test_acc'] for x in outputs]).mean()
+        print('test_loss: {:.4f}, test_acc: {:.4f}'.format(loss.item(), acc))
+        return {'test_loss': loss.item(), 'test_acc': acc}
 
     def epoch_end(self, epoch, result):
         print('Epoch [{}], val_loss: {:.4f}, val_acc: {:.4f}'.format( \
@@ -79,4 +113,10 @@ class Train_GraphConversation(LightningModule):
         print('Val dataloader')
         val_loader = DataLoader(self.val_data, shuffle=False, num_workers=self.config.num_workers, \
                         batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False)
-        return val_loader    
+        return val_loader  
+
+    def test_dataloader(self):
+        print('Test dataloader')
+        test_loader = DataLoader(self.test_data, shuffle=False, num_workers=self.config.num_workers, \
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False)
+        return test_loader
