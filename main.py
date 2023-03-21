@@ -49,14 +49,11 @@ if __name__ == "__main__":
     )
 
     trainer = pl.Trainer(**trainer_config)
-    # if config.device=='gpu':
-    #     torch.set_float32_matmul_precision('medium')
+    if config.device=='gpu':
+        torch.set_float32_matmul_precision('medium')
 
-    print('Hey')
     trainer.fit(model)
-    print('HeyHey')
     trainer.validate(model)
-    print('HeyHeyHey')
     # trainer.test(model, ckpt_path=logger.log_dir) #ogger.log_dir
     ckpt_callback.best_model_path
     trainer.test(model,ckpt_path='best')

@@ -30,10 +30,10 @@ class Train_GraphConversation(LightningModule):
             return optimizer
         elif self.config.scheduler == 'exp':
             scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, self.config.lr_decay)
-            return optimizer, scheduler
+            return [optimizer], [scheduler]
         else: #cyclic
             scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, self.config.base_lr, self.config.max_lr, cycle_momentum=False)
-            return optimizer, scheduler
+            return [optimizer], [scheduler]
 
     def forward(self, g):
         return self.model(g)

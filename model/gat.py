@@ -10,6 +10,8 @@ class CrossGAT(nn.Module):
         # TODO: check dimensions
         self.gru = nn.GRUCell(nhid, nhid)
         self.attentions = [DirectedGATLayer(nhid, nhid//nheads, alpha=alpha, dropout=dropout) for _ in range(nheads)]
+        for i, attn in enumerate(self.attentions):
+            self.add_module('cross_attention_{}'.format(i), attn)
 
     def forward(self, g, t, itype):
         offset = 100 if itype == 'counter' else 200
@@ -21,8 +23,8 @@ class CrossGAT(nn.Module):
         # only update dst node
         feat = g.nodes[dst_nodes].data['hp']
         g.nodes[dst_nodes].data['hp'] = self.gru(feat, h)
-
         return g.nodes[dst_nodes].data['hp']
+
 
 class GAT(nn.Module):
     """ Take, aggregate, plug back """
@@ -68,9 +70,6 @@ class DirectedGATLayer(nn.Module):
         node_id = torch.cat((src_nodes, dst_nodes), dim=0)
         h = g.nodes[node_id].data['hp']
         h = F.dropout(h, self.dropout, training=self.training)
-    
-        # print(h.is_cuda)
-        # print(self.W.is_cuda)
         Wh = torch.mm(h, self.W) # Wh = h x W
         g.nodes[node_id].data['Wh'] = Wh
 
@@ -146,9 +145,14 @@ class GATLayer(nn.Module):
         Wh2 = torch.matmul(edges.dst['Wh'], self.a[self.out_features:, :])
         e = Wh1 + Wh2
         return {'e': self.leakyrelu(e)}
-    
-    # def _edge_filter(self, edges):
-    #     return edges.data['turn'] == t
+
+# class Pooling(nn.Module):
+#     """ Should do pooling layer before the readout"""
+#     def __init__(self,):
+
+#     def forward(self, g, t):
+#         node_id = g.filter_nodes(lambda nodes: nodes.data['ids']==t)
+#         feat = g.nodes[node_id].data['hp']
 
 
 # class GRUCell(nn.Module):
