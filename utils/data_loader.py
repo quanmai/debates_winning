@@ -14,9 +14,6 @@ class ArgDataset(Dataset):
     def __init__(self, data):
         self.data = data
 
-    def _load(self, filename):
-        pass
-
     def _add_node(self, G, turn, argument, offset=None):
         """ Add nodes & edges for each turn """
         speaker_id = turn%2 # 0 or 1
@@ -30,7 +27,7 @@ class ArgDataset(Dataset):
     def _add_edges(self, G, adj: np.ndarray, src_offset, dst_offset, turn, edge_type=''):
         # pick top k similarity score
         if config.sparsify=='topk':
-            adj = top_k_sparsify(adj, k=2)
+            adj = top_k_sparsify(adj, k=3)
         else: # thresholding
             adj = threshold_sparsity(adj, thres=0.7)
         # add egdes
@@ -92,6 +89,7 @@ class ArgDataset(Dataset):
                 self._add_edges(G, support_attn, o, offset[i+1], i, 'support')
         return G
     
+
 def collate_fn(data):
     """ Padding sequences of various length """
     graphs, labels = map(list, zip(*data))

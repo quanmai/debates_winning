@@ -4,10 +4,74 @@ import math
 import torch
 
 
+class GATGRUCell(nn.Module):
+    """ 
+        The cell is GRUCell-like, as the output of the GATGRU is not 100% used
+        for next argument, the GRU(counter, support) (or self.gruinter()) is.
+    """
+    def __init__(self, nfeats, nhids, nheads, alpha, dropout):
+        super(GATGRUCell, self).__init__()
+        self.grucell = nn.GRUCell(nhids, nhids)
+        self.gruinter = nn.GRUCell(nhids, nhids)
+        self.gat = GAT(nfeats, nhids, nheads, alpha, dropout)
+        self.xgat = CrossGG(nhids, nhids, nheads, alpha, dropout)
+
+    def forward(self, g, t):
+        x = self.gat(g, t)
+        if t > 0:
+            h_c, node_idx = self.xgat(g, t-1, 'counter')
+            h = h_c
+            if t > 1:
+                h_s, _ = self.xgat(g, t-2, 'support')
+                # h = 0.5*h_c+0.5*h_s
+                h = self.gruinter(h_c, h_s)
+            hprime = self.grucell(x, h)
+            g.nodes[node_idx].data['hp'] = hprime
+            return hprime
+        return x
+
+
+class GRUMultiplexer(nn.Module):
+    def __init__(self, nfeat, nhid):
+        super(GRUMultiplexer, self).__init__()
+        self.gru1 = nn.GRUCell(nfeat, nhid)
+        self.gru2 = nn.GRUCell(nfeat, nhid)
+
+    def forward(self, g, node_idx, intra_feat, spprt_feat, cnter_feat):
+        if spprt_feat is None:
+            inter_feat = cnter_feat
+        elif cnter_feat is None:
+            inter_feat = spprt_feat
+        elif spprt_feat is not None and cnter_feat is not None:
+            inter_feat = cnter_feat + 0.5 * self.gru1(cnter_feat, spprt_feat)
+        feat = self.gru2(intra_feat, inter_feat)
+        g.nodes[node_idx].data['hp'] = 0.5 * feat + intra_feat
+        return
+
+
+class CrossGG(nn.Module):
+    def __init__(self, nfeats, nhid, nheads, alpha, dropout):
+        super(CrossGG, self).__init__()
+        self.attentions = nn.ModuleList([DirectedGATLayer(nfeats, nhid//nheads, alpha=alpha, dropout=dropout) for _ in range(nheads)])
+
+    def forward(self, g, t, itype):
+        """
+            itype (interaction type): counter/support
+        """
+        offset = 100 if itype == 'counter' else 200
+        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+offset)
+        _, dst_nodes = g.find_edges(edge_id)
+        dst_nodes = dst_nodes.unique()
+
+        h_itype = torch.cat([att(g, t, offset) for att in self.attentions], dim=1)
+        # only update dst node
+        g.nodes[dst_nodes].data[itype] = h_itype
+        return h_itype, dst_nodes
+
+
 class CrossGAT(nn.Module):
     def __init__(self, nhid, nheads, alpha, dropout):
         super(CrossGAT, self).__init__()
-        # TODO: check dimensions
         self.gru = nn.GRUCell(nhid, nhid)
         self.attentions = [DirectedGATLayer(nhid, nhid//nheads, alpha=alpha, dropout=dropout) for _ in range(nheads)]
         for i, attn in enumerate(self.attentions):

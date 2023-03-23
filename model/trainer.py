@@ -2,7 +2,7 @@ import torch
 from utils.data_reader import load_dataset
 from utils.data_loader import ArgDataset, collate_fn
 from utils.loss import PairBCELoss, PairHingeLoss
-from model.model import GraphArguments
+from model.model import GraphArguments, GraphGRUArguments
 from utils.helpers import acc_score
 from torch.utils.data import DataLoader
 import dgl
@@ -15,7 +15,8 @@ class Train_GraphConversation(LightningModule):
         self.config = config
         train_data, val_data, test_data = load_dataset()
         self.train_data, self.val_data, self.test_data = ArgDataset(train_data), ArgDataset(val_data), ArgDataset(test_data)
-        self.model = GraphArguments(config)
+        self.model = GraphGRUArguments(config)
+        # self.model = GraphArguments(config)
         # if config.bce
         self.loss = PairBCELoss()
         # self.loss = PairHingeLoss() # this always cause negative s1
@@ -106,17 +107,17 @@ class Train_GraphConversation(LightningModule):
     def train_dataloader(self):
         print('Train dataloader')
         train_loader = DataLoader(self.train_data, shuffle=True, num_workers=self.config.num_workers, \
-                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False)
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
         return train_loader
 
     def val_dataloader(self):
         print('Val dataloader')
         val_loader = DataLoader(self.val_data, shuffle=False, num_workers=self.config.num_workers, \
-                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False)
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
         return val_loader  
 
     def test_dataloader(self):
         print('Test dataloader')
         test_loader = DataLoader(self.test_data, shuffle=False, num_workers=self.config.num_workers, \
-                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False)
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
         return test_loader

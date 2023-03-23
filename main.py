@@ -4,6 +4,7 @@ import pytorch_lightning as pl
 # from pytorch_lightning import Trainer
 from utils.config import config
 from model.trainer import Train_GraphConversation
+from model.callbacks import EarlyStopping
 
 if __name__ == "__main__":
     model = Train_GraphConversation(config)
@@ -20,6 +21,7 @@ if __name__ == "__main__":
         patience=config.patience,
         strict=True,
         verbose=True,
+        # warm_up = 5,
         **ckpt_args
     )
 
@@ -47,7 +49,7 @@ if __name__ == "__main__":
         precision=config.precision,
         # enable_progress_bar = False,
     )
-
+    print(f'lr = {config.lr}')
     trainer = pl.Trainer(**trainer_config)
     if config.device=='gpu':
         torch.set_float32_matmul_precision('medium')
