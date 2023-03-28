@@ -18,8 +18,11 @@ class Train_GraphConversation(LightningModule):
         self.model = GraphGRUArguments(config)
         # self.model = GraphArguments(config)
         # if config.bce
-        self.loss = PairBCELoss()
-        # self.loss = PairHingeLoss() # this always cause negative s1
+        if config.loss == 'pair':
+            self.loss = PairBCELoss()
+            # self.loss = PairHingeLoss() # this always cause negative s1
+        else: #binary
+            self.loss = torch.nn.BCEWithLogitsLoss()
         self.acc_metric = acc_score
 
     def configure_optimizers(self):
@@ -44,20 +47,21 @@ class Train_GraphConversation(LightningModule):
         s1, s2 = self(g) # = self.forward(g)
         # element-wise product: y*s, 
         # y=1 (winner) -> s, y=-1 (loser) -> -s
-        loss = self.loss(s1*y, s2*y)
+        if self.config.loss == 'pair':
+            loss = self.loss(s1*y, s2*y)
+        else:
+            loss = self.loss(s2,y.float())
         return {'loss': loss}
 
     def validation_step(self, batch, batch_idx):
         g, y = batch
         s1, s2 = self(g)
-        loss = self.loss(s1*y, s2*y)
-        # pred = s1>s2 
-        # pred = torch.where(pred == 0, -1, 1)
-        # print(f's1: {s1}')
-        # print(f's2: {s2}')
-        pred = torch.where(s1>s2, 1, -1)
-        # print(f'y: {y}')
-        # print(f'p: {pred}')
+        if self.config.loss == 'pair':
+            loss = self.loss(s1*y, s2*y)
+            pred = torch.where(s1>s2, 1, -1)
+        else:
+            loss = self.loss(s2,y.float())
+            pred = torch.where(torch.sigmoid(s2)>0.5, 1, 0)
         acc = self.acc_metric(y, pred)
         log = {'val_loss': loss, 'val_acc': acc}
         self.log_dict(log)
@@ -70,12 +74,19 @@ class Train_GraphConversation(LightningModule):
     def test_step(self, batch, batch_idx):
         g, y = batch
         s1, s2 = self(g)
-        loss = self.loss(s1*y, s2*y)
-        print(f's1: {s1}')
-        print(f's2: {s2}')
-        pred = torch.where(s1>s2, 1, -1)
-        print(f'y: {y}')
-        print(f'p: {pred}')
+        if self.config.loss == 'pair':
+            loss = self.loss(s1*y, s2*y)
+            pred = torch.where(s1>s2, 1, -1)
+            print(f's1: {s1}')
+            print(f's2: {s2}')
+            print(f'y: {y}')
+            print(f'p: {pred}')
+        else:
+            loss = self.loss(s2,y.float())
+            pred = torch.where(torch.sigmoid(s2)>0.5, 1, 0)
+            print(f's2: {s2}')
+            print(f'y: {y}')
+            print(f'p: {pred}')
         acc = self.acc_metric(y, pred)
         return {'test_loss': loss,
                 'test_acc': acc}

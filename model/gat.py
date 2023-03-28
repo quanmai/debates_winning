@@ -4,6 +4,12 @@ import math
 import torch
 
 
+"""
+    How about bi-GRU? 
+        - Bi-directional information flow!
+        - Forward: conversation flow
+        - Backward: inversed flow
+"""
 class GATGRUCell(nn.Module):
     """ 
         The cell is GRUCell-like, as the output of the GATGRU is not 100% used
@@ -24,8 +30,8 @@ class GATGRUCell(nn.Module):
             if t > 1:
                 h_s, _ = self.xgat(g, t-2, 'support')
                 # h = 0.5*h_c+0.5*h_s
-                h = self.gruinter(h_c, h_s)
-            hprime = self.grucell(x, h)
+                h = h_c + 0.5*self.gruinter(h_c, h_s)
+            hprime = x + 0.5 * self.grucell(x, h)
             g.nodes[node_idx].data['hp'] = hprime
             return hprime
         return x

@@ -31,7 +31,9 @@ class ArgDataset(Dataset):
         else: # thresholding
             adj = threshold_sparsity(adj, thres=0.7)
         # add egdes
+
         dst, src = np.nonzero(adj) # dst is turn t, src is turn t-1 (b.c.of transposition)
+        # print(f'{dst=}, {src=}')
         num_edges = src.shape[0]
         edge_feature = {}
         if edge_type == 'self': #src_offset == dst_offset:
@@ -55,7 +57,8 @@ class ArgDataset(Dataset):
         support_attn_list = data['adj']['support_adj']
         arg_embed = data['graph']
         label = data['label']
-        if label==0: label=-1
+        if config.loss == 'pair':
+            if label==0: label=-1 
         graph = self.create_graph(arg_embed, attn_list, counter_attn_list, support_attn_list)
         return graph, label
 

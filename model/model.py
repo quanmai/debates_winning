@@ -12,8 +12,9 @@ class GraphGRUArguments(nn.Module):
         super().__init__()
         self.config = config
         self.gatgrucell = GATGRUCell(config.nfeat, config.nhid, config.nhead, config.alpha, config.dropout)
-        self.fc = nn.Linear(config.nhid, config.nhid*2) # real value score
-        self.score = nn.Linear(config.nhid*2, 1) # real value score
+        self.fc = nn.Linear(config.nhid, config.nhid//2)
+        self.score = nn.Linear(config.nhid//2, 1) # real value score
+        # self.register_buffer('read_out_loud', torch.zeros(1, config.nhid))
     
     def forward(self, g):
         """ Each turn do the following things:
@@ -21,14 +22,15 @@ class GraphGRUArguments(nn.Module):
             2. aggregate node representation with previous argument
         """
         turns = torch.unique(g.ndata['ids'], sorted=True)
-        if len(turns) > 10:
+        if len(turns) > 10 or len(turns) < 6:
             print(f'Argument has {len(turns)} turns')
-        # hx = torch.randn(config.nfeat, config.nhid)
         for t in turns:
             _ = self.gatgrucell(g, t)
         # read-out
-        h1 = self._read_out(g, -2, op='mean') # second-last argument
-        h2 = self._read_out(g, -1, op='mean') # last argument
+        # if self.config.loss=='pair':
+        # h1 = self._read_out(g, -2, op='mean') # second-last argument
+        # h2 = self._read_out(g, -1, op='mean') # last argument
+        h1, h2 = self._read_out_loud(g, op='mean')
         # Classification: speaker#1 wins if s1>s2
         s1 = self.score(F.relu(self.fc(h1)))
         s2 = self.score(F.relu(self.fc(h2)))
@@ -44,6 +46,7 @@ class GraphGRUArguments(nn.Module):
             # TODO: back later
             if op == 'mean':
                 a = torch.mean(h, dim=-2, keepdim=True)
+                # print(a.shape)
             elif op == 'max':
                 a = torch.max(h, dim=-2, keepdim=True).values
             else:
@@ -51,6 +54,35 @@ class GraphGRUArguments(nn.Module):
             res.append(a)
         r = torch.cat(res, dim=0).unsqueeze(1)
         return r
+
+    def _read_out_loud(self, gg, op='mean'):
+        gl = dgl.unbatch(gg)
+        res1 = [] # list of tensor
+        res2 = [] # list of tensor
+        for g in gl:
+            turns = torch.max(g.ndata['ids']).item()+1
+            readout_s1 = torch.zeros((1, self.config.nhid), device=self.config.device)
+            readout_s2 = torch.zeros((1, self.config.nhid), device=self.config.device)
+            # readout_s2 = self.read_out_loud
+            # print(readout_s1)
+            for turn in range(turns):
+                node_idx = g.filter_nodes(lambda nodes: nodes.data['ids']==turn)
+                h = g.nodes[node_idx].data['hp']
+                if op == 'mean':
+                    a = torch.mean(h, dim=-2, keepdim=True)
+                elif op == 'max':
+                    a = torch.max(h, dim=-2, keepdim=True).values
+                else:
+                    raise AssertionError("Unexpected value of 'op'!", op)
+                if turn % 2 == 0:
+                    readout_s1 += a
+                else:
+                    readout_s2 += a
+            res1.append(readout_s1)
+            res2.append(readout_s2)
+        r1 = torch.cat(res1, dim=0).unsqueeze(1)
+        r2 = torch.cat(res2, dim=0).unsqueeze(1)
+        return r1, r2
 
 
 class GraphArguments(nn.Module):

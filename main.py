@@ -44,14 +44,14 @@ if __name__ == "__main__":
         logger=logger,
         log_every_n_steps=1,
         deterministic=False,
-        accelerator=config.device,
+        accelerator=config.accelerator,
         devices=1,
         precision=config.precision,
         # enable_progress_bar = False,
     )
     print(f'lr = {config.lr}')
     trainer = pl.Trainer(**trainer_config)
-    if config.device=='gpu':
+    if config.accelerator=='gpu':
         torch.set_float32_matmul_precision('medium')
 
     trainer.fit(model)

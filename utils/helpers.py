@@ -27,5 +27,3 @@ def threshold_sparsity(A, thres=0.5):
 
 def acc_score(y_true, y_pred):
     return torch.sum(y_true==y_pred) / y_pred.shape[0]
-
-# def f1_score(y_true, y_pred):
