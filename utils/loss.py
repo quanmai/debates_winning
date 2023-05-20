@@ -7,7 +7,8 @@ class PairBCELoss(_Loss):
         super(PairBCELoss, self).__init__()
 
     def forward(self, pos_logit, neg_logit):
-        loss = torch.log(1 + torch.exp(- pos_logit + neg_logit))
+        z = pos_logit - neg_logit
+        loss = torch.log(1 + torch.exp(-z))
         return torch.mean(loss)
 
 class PairHingeLoss(_Loss):
@@ -16,5 +17,6 @@ class PairHingeLoss(_Loss):
         super(PairHingeLoss, self).__init__()
 
     def forward(self, pos_logit, neg_logit):
-        loss = torch.maximum(torch.tensor(0), 1 - pos_logit + neg_logit)
+        z = pos_logit - neg_logit
+        loss = torch.maximum(torch.tensor(0), 1 - z)
         return torch.mean(loss)

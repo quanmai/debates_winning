@@ -50,8 +50,6 @@ def filter_short_arguments(debates, k=5):
     
     return debate_dict
 
-                    
-
 def filter_tied(debates):
     '''
         filter out tied debates
@@ -74,7 +72,8 @@ def filter_tied_argument(debates):
     '''
         # filter out debates that are tied on Made more convincing arguments
     '''
-    debate_generate = {}
+    debate_dict = {}
+    count = 0
 
     for key,debate in debates.items():
         temp_pro = 0
@@ -89,9 +88,12 @@ def filter_tied_argument(debates):
                     elif name == Con and attitude['Made more convincing arguments'] == True:
                         temp_con = temp_con + 1
         if temp_pro != temp_con:
-            debate_generate[key] = debate
+            debate_dict[key] = debate
+        else:
+            count += 1
+    print('there are {} conversations that tied v2'.format(count))
 
-    return debate_generate
+    return debate_dict
 
 
 def filter_forfeit_argument(debates):
@@ -117,12 +119,29 @@ def filter_less_than_k_turns(debates, k=3):
     i = 0
     for key, debate in debates.items():
         if len(debate['rounds']) < k:
+            print(key)
             i+= 1
-            continue   
+            continue
         else:
             debate_dict[key] = debate
     
     print('There are {} debates that have less than {} turns'.format(i,k))
+
+    return debate_dict
+
+def filter_less_than_k_rounds(debates, k=3):
+    debate_dict = {}
+    i = 0
+    for key, debate in debates.items():
+        if debate["number_of_rounds"] < 3:
+        # if len(debate['rounds']) < k:
+            # print(key)
+            i+= 1
+            continue
+        else:
+            debate_dict[key] = debate
+    
+    print('There are {} debates that have less than {} rounds'.format(i,k))
 
     return debate_dict
 
@@ -132,7 +151,7 @@ def filter_lass_than_k_voters(debates, k=5):
     for key, debate in debates.items():
         if len(debate['votes']) < k:
             i+= 1
-            continue   
+            continue
         else:
             debate_dict[key] = debate
     
@@ -164,12 +183,13 @@ def filter_tied_argument_less_than_x(debates, k=1):
     return debate_dict
 
 if __name__ == '__main__':
-    debates = {}
+    # debates = {}
 
-    with open(config.original_f, 'r') as f:
+    # with open(config.original_f, 'r') as f:
+    with open('../ddo/debates.json', 'r') as f:
         debates = json.load(f)
     f.close()
-
+    print(len(debates))
     # Preprocess argument
     debates = reduce(
         lambda value, function: function(value),
@@ -179,14 +199,16 @@ if __name__ == '__main__':
             filter_tied,
             filter_tied_argument,
             filter_forfeit_argument,
-            filter_less_than_k_turns,
+            # filter_less_than_k_turns,
+            filter_less_than_k_rounds,
             filter_lass_than_k_voters,
             filter_tied_argument_less_than_x,
         ),
         debates,
     )
 
-    with open(config.filtered_f, 'w') as f:
+    # with open(config.filtered_f, 'w') as f:
+    with open('../dataset/data_all_argument.json', 'w') as f:
         json.dump(debates, f)
     f.close()
     print(len(debates))

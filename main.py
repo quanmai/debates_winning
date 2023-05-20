@@ -28,7 +28,7 @@ if __name__ == "__main__":
     ckpt_callback = pl.callbacks.ModelCheckpoint(
         # filepath=os.path.join(logger.log_dir, '{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}'),
         dirpath=logger.log_dir,
-        filename='{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}',
+        filename='{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}-{val_f1:.3f}',
         save_top_k=1,
         verbose=True,
         **ckpt_args
@@ -54,8 +54,13 @@ if __name__ == "__main__":
     if config.accelerator=='gpu':
         torch.set_float32_matmul_precision('medium')
 
-    trainer.fit(model)
-    trainer.validate(model)
-    # trainer.test(model, ckpt_path=logger.log_dir) #ogger.log_dir
-    ckpt_callback.best_model_path
-    trainer.test(model,ckpt_path='best')
+    if not config.test:
+        trainer.fit(model)
+        trainer.validate(model)
+        # trainer.test(model, ckpt_path=logger.log_dir) #ogger.log_dir
+        ckpt_callback.best_model_path
+        trainer.test(model,ckpt_path='best')
+    else:
+        test_model = config.test_model
+        model = model.load_from_checkpoint(test_model)
+        trainer.test(model)

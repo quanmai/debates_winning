@@ -1,0 +1,252 @@
+246:
+    CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 16 \
+                    --patience 500 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 5e-05\
+                    --loss binary \
+247: 
+    CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 16 \
+                    --patience 500 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 5e-04\
+                    --loss binary \
+                    --scheduler exp \
+248:
+    CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 16 \
+                    --patience 800 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 5e-03\
+                    --loss binary \
+                    --scheduler exp \
+249:
+    CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 16 \
+                    --patience 800 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 1e-03\
+                    --loss binary \
+                    --scheduler exp \
+250:
+    CUDA_VISIBLE_DEVICES=5 python main.py \
+                        --batch-size 128 \
+                        --nhid 16 \
+                        --patience 800 \
+                        --accelerator gpu \
+                        --epoch 1000 \
+                        --is-counter \
+                        --is-support \
+                        --lr 1e-05\
+                        --loss binary \
+    test_loss: 0.6499, test_acc: 0.6304, test_f1: 0.1208
+
+288: 
+    CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 16 \
+                    --patience 800 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 1e-05\
+                    --loss binary \
+                    --mode bidirection \
+        
+289:
+CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 16 \
+                    --patience 800 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 5e-03\
+                    --loss binary \
+                    --mode bidirection \
+                    --scheduler exp \
+
+290:
+    CUDA_VISIBLE_DEVICES=5 python main.py \
+                        --batch-size 128 \
+                        --nhid 16 \
+                        --patience 800 \
+                        --accelerator gpu \
+                        --epoch 1000 \
+                        --is-counter \
+                        --is-support \
+                        --lr 5e-03\
+                        --loss binary \
+                        --mode bidirection \
+                        --scheduler exp \
+                        --optimizer sgd \
+
+328: Changing edge offset
+CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 16 \
+                    --patience 800 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 1e-05\
+                    --loss binary \
+336:
+    CUDA_VISIBLE_DEVICES=6 python main.py \
+                        --batch-size 128 \
+                        --nhid 8 \
+                        --patience 800 \
+                        --accelerator gpu \
+                        --epoch 1000 \
+                        --is-counter \
+                        --is-support \
+                        --lr 1e-05\
+                        --loss binary \
+
+337:
+    CUDA_VISIBLE_DEVICES=5 python main.py \
+                        --batch-size 128 \
+                        --nhid 8 \
+                        --patience 800 \
+                        --accelerator gpu \
+                        --epoch 1000 \
+                        --is-counter \
+                        --is-support \
+                        --lr 5e-04\
+                        --loss binary \
+
+
+357: Change to nhid32
+CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 32 \
+                    --patience 800 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 5e-04\
+                    --loss binary \
+                    --scheduler exp \
+
+
+
+378: Using nhead=1
+    h = 0.5*h_c+0.5*h_s
+    hprime = self.grucell(x, h)
+    CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 64 \
+                    --nhid 8 \
+                    --patience 800 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 5e-04\
+                    --loss binary \
+                    --scheduler exp \
+                    --nhead 1 \
+
+379: Version 2 of 378 using default nheads
+
+
+394: Version 2 of 357, using full gru, bidirection
+395: Same as 394, nhead = 1
+
+
+396: add resident connection: hprime = x + self.grucell(x, h)
+CUDA_VISIBLE_DEVICES=6 python main.py \
+                    --batch-size 128 \
+                    --nhid 32 \
+                    --patience 800 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 5e-04\
+                    --loss binary \
+                    --scheduler exp \
+
+398: 396v2 with bidirection: hprime = x - self.grucell(x, h)
+    --> F1 = 0
+
+444: 396 + Using separate gru for 2 users
+445: 444 + nhid 16
+
+447: New data adapting spacy , using full gru, separate gru
+
+    CUDA_VISIBLE_DEVICES=6 python main.py \
+                        --batch-size 128 \
+                        --nhid 16 \
+                        --patience 800 \
+                        --accelerator gpu \
+                        --epoch 1000 \
+                        --is-counter \
+                        --is-support \
+                        --lr 5e-04\
+                        --loss binary \
+                        --scheduler exp \
+    it sucks!
+448: 447 , not full gru, remove res connection, still separate gru
+449: 448 + no seperate gru
+450: 449 -> pair loss
+451: 449: bidirection, not full gru
+452: 449, on new generate_data
+453: 452, nhid=8
+454: Change to sgd, nhid 16, batch 256
+
+    CUDA_VISIBLE_DEVICES=5 python main.py \
+                        --batch-size 256 \
+                        --nhid 16 \
+                        --patience 200 \
+                        --accelerator gpu \
+                        --epoch 1000 \
+                        --is-counter \
+                        --is-support \
+                        --lr 1e-03\
+                        --loss binary \
+                        --optimizer sgd \
+
+455: No gru in xGAT, no res, no seperate gru
+    h = 0.5*h_c+0.5*h_s
+    hprime = 0.5*x + 0.5*h
+
+    CUDA_VISIBLE_DEVICES=5 python main.py \
+                    --batch-size 128 \
+                    --nhid 16 \
+                    --patience 200 \
+                    --accelerator gpu \
+                    --epoch 1000 \
+                    --is-counter \
+                    --is-support \
+                    --lr 5e-04\
+                    --loss binary \
+                    --scheduler exp \
+
+    --> no help :-<
+
+457: Same 455, new code
+        g.pull(v=node_id, message_func=self._message_func, reduce_func=self._reduce_func)
+459: Change to         
+        g.pull(v=dst_nodes, message_func=self._message_func, reduce_func=self._reduce_func)
+
