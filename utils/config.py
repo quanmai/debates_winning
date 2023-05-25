@@ -23,11 +23,14 @@ parser.add_argument('--scheduler', type=str, choices=['', 'exp', 'cyclic'], defa
 parser.add_argument('--lr_decay', type=float, default=0.98, help='scheduler decay')
 parser.add_argument('--accelerator', type=str, choices=['gpu','cpu'], default='cpu')
 parser.add_argument('--sparsify', type=str, choices=['topk', 'threshold'], default='topk', help='Adjacency Sparsification')
+parser.add_argument('--node-encoder', type=str, default='', help='Node encoder type')
+parser.add_argument('--node-encoder-direction', type=str, choices=['in', 'out', 'both'], default='both', help='Degree encoder directioin')
 parser.add_argument('--k', type=int, default=3, help='Top-k Sparsification')
 parser.add_argument('--lr', type=float, default=5e-4, help='learning rate')
 parser.add_argument('--batch-size', type=int, default=100, help='batch size cuda can support')
-parser.add_argument('--test', action='store_true', default=False, help='Run test model')
-parser.add_argument('--test-model', type=str, default='', help='Test Model Path')
+parser.add_argument('--gat-layers', type=int, choices=[1, 2], default=1, help='Number GAT Layers')
+parser.add_argument('--test-ver', type=int, default=0, help='Test Model Version')
+parser.add_argument('--counter-coeff', type=float, default=0.5, help='Counter argument coefficient')
 
 args = parser.parse_args()
 class Config:
@@ -36,9 +39,10 @@ class Config:
         self.train_f, self.dev_f, self.test_f = (os.path.join(self.data_dir, o) for o in ['train.json','dev.json','test.json'])
         # self.proce_f = os.path.join(self.data_dir, 'dataset_preproc.p')
         if self.run100:
-            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_100_200.p')
+            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_100.p')
         else:
-            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_full.p')
+            # self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_full.p')
+            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_6_turns.p')
         self.filtered_f = os.path.join(self.data_dir, 'data_all_argument.json')
         self.gen_f = os.path.join(self.data_dir, 'data_gen.json')
         self.original_f = 'ddo/debates.json'
@@ -48,7 +52,7 @@ class Config:
         self.word_pairs = {
             "it's": "it is", 
             "don't": "do not", 
-            "doesn't": "does not2", 
+            "doesn't": "does not", 
             "didn't": "did not", 
             "you'd": "you would",
             "you're": "you are", 

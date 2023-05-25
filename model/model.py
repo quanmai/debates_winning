@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import dgl
 import torch.nn as nn
 from model.gat import GATGRUCell, GATGRUCellInversed
+from model.degree_encoder import DegreeEncoder
 from collections import OrderedDict
 
 MAX_TURNS = 10
@@ -13,11 +14,10 @@ class GraphGRUArguments(nn.Module):
         super().__init__()
         self.config = config
         self.nlast = int(1.5*config.nhid) if config.mode=='bidirection' else config.nhid
-        # self.nlast = config.nfeat
-        # self.pos_emb = nn.Embedding(6, self.nlast)
+        self.degree_encoder = DegreeEncoder(max_degree=20, 
+                                            embedding_dim=config.nfeat if config.node_encoder == 'first' else config.nhid, 
+                                            direction=config.node_encoder_direction)
         self.gatgrucell = GATGRUCell(config.nfeat, config.nhid, config.nhead, config.alpha, config.dropout)
-        if config.loss != 'binary':
-            self.gatgrucell2 = GATGRUCell(config.nfeat, config.nhid, config.nhead, config.alpha, config.dropout)
         if config.mode=='bidirection':
             self.gatgrucellback = GATGRUCellInversed(config.nhid, config.nhid//2, config.nhead, config.alpha, config.dropout)
         if config.loss == 'binary':
@@ -44,6 +44,7 @@ class GraphGRUArguments(nn.Module):
             # nn.init.xavier_normal_(self.layers.linear3.weight)
             nn.init.xavier_normal_(self.layers.linear4.weight)
         else:
+            self.gatgrucell2 = GATGRUCell(config.nfeat, config.nhid, config.nhead, config.alpha, config.dropout)
             self.score1 = nn.Sequential(OrderedDict([
                 ('bn1', nn.BatchNorm1d(1)),
                 ('linear1', nn.Linear(self.nlast, config.nhid//2)),
@@ -62,6 +63,7 @@ class GraphGRUArguments(nn.Module):
                 ('linear2', nn.Linear(config.nhid//2, 1)),
                 ('tanh', nn.Tanh()),
             ]))
+
     def forward(self, g):
         """ Each turn do the following things:
             1. update node representation using intra-attention
@@ -72,6 +74,9 @@ class GraphGRUArguments(nn.Module):
         #     print(f'Argument has {len(turns)} turns')
         # if self.config.mode=='bidirection':
         turns = [0,1,2,3,4,5]
+        if self.config.node_encoder == 'first':
+            d_enc = self.degree_encoder(g)
+            g.ndata['h'] += d_enc
         # for t in turns:
         #     if t % 2 == 0:
         #         _ = self.gatgrucell(g, t)
@@ -87,6 +92,9 @@ class GraphGRUArguments(nn.Module):
         if self.config.loss == 'binary':
             for t in turns:
                 _ = self.gatgrucell(g, t)
+            if self.config.node_encoder != 'first':
+                d_enc = self.degree_encoder(g)
+                g.ndata['hp'] += d_enc
             # for t in turns:
             #     if t % 2 == 0:
             #         _ = self.gatgrucell(g, t)
@@ -117,7 +125,7 @@ class GraphGRUArguments(nn.Module):
             s1 = self.score1(h1)
             s2 = self.score2(h2)
             return s1.squeeze(), s2.squeeze()
-    
+
     def _read_out(self, gg, t, op='mean'):
         gl = dgl.unbatch(gg)
         res = [] # list of tensor
@@ -175,74 +183,3 @@ class GraphGRUArguments(nn.Module):
         r1 = torch.cat(res1, dim=0).unsqueeze(1)
         r2 = torch.cat(res2, dim=0).unsqueeze(1)
         return r1, r2
-
-
-# class GraphArguments(nn.Module):
-#     def __init__(self, config):
-#         super().__init__()
-#         self.config = config
-#         self.attns = nn.ModuleList([GAT(config.nfeat, config.nhid, config.nhead, config.alpha, config.dropout) for _ in range(MAX_TURNS)])
-#         if config.is_counter:
-#             self.cnter_attns = nn.ModuleList([CrossGG(config.nhid, config.nhid, config.nhead, config.alpha, config.dropout) for _ in range(MAX_TURNS-1)])
-#             # self.cnter_attns = nn.ModuleList([CrossGAT(config.nhid, config.nhead, config.alpha, config.dropout) for _ in range(MAX_TURNS-1)])
-#         if config.is_support:
-#             self.spprt_attns = nn.ModuleList([CrossGG(config.nhid, config.nhid, config.nhead, config.alpha, config.dropout) for _ in range(MAX_TURNS-2)])
-#             # self.spprt_attns = nn.ModuleList([CrossGAT(config.nhid, config.nhead, config.alpha, config.dropout) for _ in range(MAX_TURNS-2)])
-#         if config.is_counter or config.is_support:
-#             self.gru = nn.ModuleList([GRUMultiplexer(config.nhid, config.nhid) for _ in range(MAX_TURNS-1)])
-#         self.fc = nn.Linear(config.nhid, config.nhid*2) # real value score
-#         self.score = nn.Linear(config.nhid*2, 1) # real value score
-    
-#     def forward(self, g):
-#         """ Each turn do the following things:
-#             1. update node representation using intra-attention
-#             2. aggregate node representation with previous argument
-#         """
-#         turns = torch.unique(g.ndata['ids'], sorted=True)
-#         if len(turns) > 10:
-#             print(f'Argument has {len(turns)} turns')
-#         for t in turns:
-#             cnter_feat = None
-#             spprt_feat = None
-#             # Intra-argument (self) attention
-#             self.attns[t](g,t)
-#             # Inter-argument (counter-support) attention
-#             if self._do_counter(t):
-#                 cnter_feat, node_idx = self.cnter_attns[t-1](g, t-1, 'counter')
-#             if self._do_support(t):
-#                 spprt_feat, node_idx = self.spprt_attns[t-2](g, t-2, 'support') 
-#             if self._do_counter(t) or self._do_counter(t):
-#                 intra_feat = g.nodes[node_idx].data['hp']
-#                 self.gru[t-1](g, node_idx, intra_feat, spprt_feat, cnter_feat)
-#         # read-out
-#         h1 = self._read_out(g, -2, op='mean') # second-last argument
-#         h2 = self._read_out(g, -1, op='mean') # last argument
-#         # Classification: speaker#1 wins if s1>s2
-#         s1 = self.score(F.relu(self.fc(h1)))
-#         s2 = self.score(F.relu(self.fc(h2)))
-#         return s1.squeeze(), s2.squeeze()
-    
-#     def _read_out(self, gg, t, op='mean'):
-#         gl = dgl.unbatch(gg)
-#         res = [] # list of tensor
-#         for g in gl:
-#             turns = torch.max(g.ndata['ids']).item()+1
-#             node_idx = g.filter_nodes(lambda nodes: nodes.data['ids']==turns+t)
-#             h = g.nodes[node_idx].data['hp']
-#             # nicer way: https://stackoverflow.com/questions/23131594/choose-which-function-to-execute-based-on-a-parameter-its-name
-#             # TODO: back later
-#             if op == 'mean':
-#                 a = torch.mean(h, dim=-2, keepdim=True)
-#             elif op == 'max':
-#                 a = torch.max(h, dim=-2, keepdim=True)
-#             else:
-#                 raise AssertionError("Unexpected value of 'op'!", op)
-#             res.append(a)
-#         r = torch.cat(res, dim=0).unsqueeze(1)
-#         return r
-
-#     def _do_counter(self, t):
-#         return self.config.is_counter and t > 0
-    
-#     def _do_support(self, t):
-#         return self.config.is_support and t > 1

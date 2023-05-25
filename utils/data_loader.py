@@ -1,6 +1,5 @@
 import torch
 import dgl
-import pickle
 from torch.utils.data import Dataset
 from utils.config import config
 from itertools import accumulate
@@ -10,13 +9,6 @@ from utils.helpers import top_k_sparsify, threshold_sparsity
 # https://www.dgl.ai/blog/2019/01/25/batch.html
 # https://discuss.dgl.ai/t/create-dataset-from-dglgraphs-in-memory/904/5
 
-EDGE_OFFSET = {
-    'self': 0,
-    'counter': 100,
-    'counter_bw': 1000,
-    'support': 200,
-    'support_bw': 2000
-}
 
 class ArgDataset(Dataset):
     def __init__(self, data):
@@ -50,10 +42,9 @@ class ArgDataset(Dataset):
         if config.sparsify=='topk':
             adj = top_k_sparsify(adj, k=3)
         else: # thresholding
-            adj = threshold_sparsity(adj, thres=0.55)
-            # print(f'{edge_type}')
-            # print(adj)
-            # adj = adj
+            # we do thresholding here
+            # if node is isolated, connect it with highest score node
+            adj = threshold_sparsity(adj, thres=0.9)
 
         dst, src = np.nonzero(adj)
         num_edges = src.shape[0]

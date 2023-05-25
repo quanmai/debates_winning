@@ -1,4 +1,4 @@
-MIN_LEN = 6
+NUM_TURNS = 6
 import spacy
 from spacy.lang.en import English
 nlp = spacy.load("en_core_web_sm")
@@ -60,6 +60,7 @@ def _process_text(text: str) -> str:
     return text
 
 def _get_label(debate):
+    """ PRO:1, CON: 0"""
     temp_pro = 0
     temp_con = 0
     if debate['participant_1_position'] == 'Pro' and debate['participant_2_position'] == 'Con':
@@ -86,7 +87,7 @@ def _get_label(debate):
         raise Exception('Cannot determine winner')
 
 def _preprocess(title_list, min_len: int = 3):
-    """ Sentence embedding using BERT
+    """ Sentence embedding using Sentence-BERT
         Edges are defined by cosine similarity among sentence"""
     print(title_list)
     pros, cons = 0, 0
@@ -132,10 +133,11 @@ def _preprocess(title_list, min_len: int = 3):
             if not okay_arg:
                 continue
             # arguments_embed_list = list(itertools.chain(*arguments_embed_list)) # list of lists into a list
+            arguments_embed_list = arguments_embed_list[-NUM_TURNS:]
             d['graph'] = arguments_embed_list 
             # d['arg_len'] = arguments_len_list
-            assert len(arguments_len_list) >= MIN_LEN
-            print(len(arguments_len_list))
+            assert len(arguments_embed_list) == NUM_TURNS, f'Number of turns is {len(arguments_embed_list)}'
+            # print(len(arguments_len_list))
             
             intra_sim_list, counter_sim_list, support_sim_list = [], [], []
             for i in range(len(arguments_embed_list)):

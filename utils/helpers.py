@@ -16,13 +16,20 @@ def top_k_sparsify(A:np.ndarray, k: int = 3) -> np.ndarray:
                 adj[r][c] = 1
     return adj
 
-def threshold_sparsity(A, thres=0.5):
+def threshold_sparsity(A, thres=0.5, connect_if_isolated=-1):
     """
         Sparsify the adj matrix in thresholding fashion
         i.e., a connection is defined if the edge values >= threshold value
     """
-    # A = A.T
-    return np.where(A>=thres, 1, 0)
+    A = np.where(A>=thres, 1, 0)
+
+    # dealing with isolated node
+    # if node connects to no other nodes, connect it with the node that has highest similarity
+    rows, cols = A.shape
+    for r in range(rows):
+        if all(A[r][c]==0 for c in range(cols)):
+            A[r][connect_if_isolated] = 1
+    return A
 
 def acc_score(y_true, y_pred):
     return torch.sum(y_true==y_pred) / y_pred.shape[0]
