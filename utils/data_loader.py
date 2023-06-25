@@ -11,17 +11,22 @@ from utils.helpers import top_k_sparsify, threshold_sparsity
 
 
 class ArgDataset(Dataset):
-    def __init__(self, data):
+    def __init__(self, data, vocab):
         self.data = data
+        self.vocab = vocab
 
-    def _add_node(self, G, turn, argument, offset=None):
+    def _add_node(self, G, turn, argument, offset, title):
         """ Add nodes & edges for each turn """
         speaker_id = turn%2 # 0 or 1
         num_nodes = len(argument)
         node_feature = {}
-        # node_feature['speaker'] = torch.zeros(num_nodes, dtype=torch.int8) if speaker_id == 0 else torch.ones(num_nodes, dtype=torch.int8)
         node_feature['h'] = torch.tensor(argument)
-        node_feature['ids'] = torch.ones(num_nodes, dtype=torch.int8)*turn
+        node_feature['ids'] = torch.ones(num_nodes, dtype=torch.int32)*turn
+        node_feature['uid'] =  torch.ones(num_nodes, dtype=torch.int32) if turn%2 else torch.zeros(num_nodes, dtype=torch.int32)
+        # node_feature['nid'] = torch.tensor([i+offset for i in range(num_nodes)]) # including nodes from previous turns
+        node_feature['nid'] = torch.tensor([i for i in range(num_nodes)])  # excluding ...
+        # if num_nodes < 6:
+        #     print(f'{num_nodes=}, {title=}')
         G.add_nodes(num=num_nodes, data=node_feature)
 
     def _add_edges(self, G, adj: np.ndarray, src_offset, dst_offset, turn, edge_type):
@@ -39,21 +44,29 @@ class ArgDataset(Dataset):
         if '_bw' not in edge_type:
             adj = adj.T
         # pick top k similarity score
+        # print(f'{adj=}')
         if config.sparsify=='topk':
-            adj = top_k_sparsify(adj, k=3)
+            adj = top_k_sparsify(adj, k=3, is_edge_weight=False)
         else: # thresholding
             # we do thresholding here
             # if node is isolated, connect it with highest score node
-            adj = threshold_sparsity(adj, thres=0.9)
-
+            adj = threshold_sparsity(adj, thres=0.85)
+        # print(f'{adj=}')
+        # breakpoint()
         dst, src = np.nonzero(adj)
+        # dst: [0 0 2 3]
+        # src: [0 1 1 2]
+        # print(f'{src=}')
+        # print(f'{dst=}')
         num_edges = src.shape[0]
-        # print(f'{edge_type= }, {num_edges=}')
+        # print(f'{num_edges=}')
         edge_feature = {}
         edge_feature['turn'] = torch.ones(num_edges, dtype=torch.float)*turn \
                                 + config.EDGE_OFFSET[edge_type]
+        # edge_weight = [adj[dst[i]][src[i]] for i in range(num_edges)]
+        # edge_feature['w'] = torch.tensor(edge_weight, dtype=torch.float)
+        # print(edge_feature['w'])
         # assert(edge_feature['turn'] > 0)
-
         G.add_edges(src+src_offset, dst+dst_offset, data=edge_feature)
 
     def __len__(self):
@@ -63,21 +76,31 @@ class ArgDataset(Dataset):
         """ Get the idx-th sample
             return graph & corresponding label """
         # data = self.data[0] if config.debug else self.data[idx]
+        # data = self.data[-1]
         data = self.data[idx]
         attn_list = data['adj']['intra_adj']
         counter_attn_list = data['adj']['counter_adj']
         support_attn_list = data['adj']['support_adj']
         arg_embed = data['graph']
+        # total_nodes = sum([len(a) for a in arg_embed]) # total node in 1 debate
         label = data['label']
         # print(f'Winning side: {label}')
-
         title = data['title']
+        # print(title)
         if config.loss != 'binary':
             if label==0: label=-1 
         graph = self.create_graph(arg_embed, attn_list, counter_attn_list, support_attn_list, title)
+
+        # item = dict(
+        #     graph=graph,
+        #     label=label,
+        #     total_nodes=total_nodes,
+        #     # utter=arg_embed,
+        # )
+        # return item
         return graph, label
 
-    def create_graph(self, arg_embed, attn_list, counter_attn_list, support_attn_list, title = ''):
+    def create_graph(self, arg_embed, attn_list, counter_attn_list, support_attn_list, title):
         """ Create graph for each conversation """
 
         G = dgl.graph([])
@@ -89,7 +112,8 @@ class ArgDataset(Dataset):
         # [1,3,5,9] -> [1,4,9,18]
         offset = list(accumulate(offset))
         for turn, argument in enumerate(arg_embed):
-            self._add_node(G, turn, argument)
+            o = 0 if turn==0 else offset[turn-1]
+            self._add_node(G, turn, argument, o, title)
         assert G.num_nodes() == offset[-1], \
                 f"Fail constructing graph, #nodes = {G.num_nodes()}, get {offset[-1]} !"
         assert len(arg_embed) == len(attn_list)
@@ -112,9 +136,49 @@ class ArgDataset(Dataset):
         return G
     
 
+# def collate_fn(data):
+#     graphs, labels = map(list, zip(*data))
+#     batched_graph = dgl.batch(graphs)
+#     return batched_graph, torch.tensor(labels)
+
 def collate_fn(data):
-    """ Padding sequences of various length """
-    graphs, labels = map(list, zip(*data))
-    batched_graph = dgl.batch(graphs)
-    # print(f'{batched_graph.batch_size=}')
-    return batched_graph, torch.tensor(labels)
+    """ Padding sequences of various length 
+        Each turn should have same number of sentences (#nodes)
+        Is this 2-dim padding? -> No, 1, cuz we have same #turns
+    """
+    B = len(data)
+    item = {}
+    for k in data[0].keys():
+        item[k] = [d[k] for d in data] # (B, l) : l is different among items in batch 
+        #                                         that's why we have to pad :-)
+    num_nodes = item['total_nodes']
+    max_num_nodes = np.max(item['total_nodes']) # maximum node in a batch
+    masked_nodes = _pad_1d(num_nodes, B, max_num_nodes)
+    batched_graph=dgl.batch(item['graph'])
+    assert batched_graph.batch_size == B
+    # print(item['label'])
+    label = torch.tensor(item['label'])
+    # utter = _pad_nodes(item['utter'])
+
+    return dict(
+        label=label,
+        batched_graph=batched_graph,
+        masked_nodes=masked_nodes,
+        max_num_nodes=max_num_nodes,
+        # utter=utter,
+    )
+
+def _pad_1d(x, batch_size, pad_len):
+    """ Nodes masking """
+    mask = torch.ones(batch_size, pad_len, dtype=torch.int8)
+    for i, _x in enumerate(x):
+        mask[i][:_x] = 0
+    return mask
+
+def _pad_nodes(x, pad_len, nhid):
+    """ Pad dummy nodes """
+    pad = torch.zeros((pad_len, nhid), dtype=torch.float32)
+    xlen = x.shape[0]
+    assert xlen > pad_len
+    pad[:xlen] = x
+    return pad
