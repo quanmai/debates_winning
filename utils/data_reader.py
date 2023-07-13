@@ -45,12 +45,13 @@ QUO = ' quote ' #' [QUOTE] '
 
 def _process_text(text: str) -> str:
     url = r'(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]{1,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)'
-    # text = re.sub(r'^[^a-zA-Z]+','', text) # Remove non-alphabetic char before alphabetic chars
     text = re.sub(url, URL , text)
     text = re.sub(r'-?\d+(\.\d+)?(?!\w)', NUM, text)
     text = re.sub(r'[-+]?.?[0-9]+[a-zA-Z]*', NUM, text) #like 19th
     text = re.sub(r"&gt;.*\n\n", QUO, text)
     text = re.sub(r'\r\n', '', text)
+    text = re.sub(r'\n', '', text)
+    text = re.sub(r'^[^a-zA-Z]+','', text) # Remove non-alphabetic char before alphabetic chars
     text = re.sub(r'%','',  text)
     text = text.lower()
 
@@ -88,7 +89,9 @@ def _get_label(debate):
 
 def _preprocess(title_list, min_len: int = 3):
     """ Sentence embedding using Sentence-BERT
-        Edges are defined by cosine similarity among sentence"""
+        Edges are defined by cosine similarity among sentence
+        Remove sentence less than min_len words, 
+        remove debate if a turn have less than 3 sentence"""
     print(title_list)
     pros, cons = 0, 0
     with open(config.filtered_f, 'r') as f:
@@ -113,27 +116,51 @@ def _preprocess(title_list, min_len: int = 3):
             for round in debate['rounds']:
                 for side in round:
                     text = side['text']
+                    print('---------')
+                    print(text)
+                    print('---------')
                     text = _process_text(text)
                     doc = nlp(text)
                     sents = [s.text for s in doc.sents]
+                    print(sents)
+                    print('---------')
                     # sents = nltk.tokenize.sent_tokenize(text)
-                    sents = [s for s in sents if len([w for w in s.split(' ') if w.isalpha()]) >= min_len]
-                    # print(sents)
-                    if sents and len(sents) >= 3: # high quality arguments
-                        # sents_embeddings = sentence_embedding(sents)
+                    _sents = []
+                    for s in sents:
+                        _count = 0
+                        for w in s.split(' '):
+                            if w.isalpha():
+                                _count += 1
+                        if _count >= min_len:
+                            # print(s)
+                            ss = ' '.join([sss for sss in s.split(' ') if sss.isalpha()])
+                            if s[-1][-1] == '.':
+                                last_word = s.split(' ')[-1]
+                                ss += ' ' + last_word
+                            _sents.append(ss)
+                    # sents = [s for s in sents if len([w for w in s.split(' ') if w.isalpha()]) >= min_len]
+                    sents = _sents
+                    print(sents)
+                    breakpoint()
+                    if sents and len(sents) >= 10: # high quality arguments
                         sents_embeddings = model.encode(sents)
-                        # print(sents_embeddings)
+                        # transform scale
                         sents_embeddings_t = sents_embeddings.T
                         scaler = sklearn.preprocessing.StandardScaler().fit(sents_embeddings_t)
                         sents_embeddings_scaled = scaler.transform(sents_embeddings_t)
                         arguments_embed_list.append(sents_embeddings_scaled.T)
+                        # arguments_embed_list.append(sents_embeddings)
                         arguments_len_list.append(len(sents))
                     else:
                         okay_arg = False
             if not okay_arg:
                 continue
+            abel = _get_label(debate)
+            print(f'Winner is: {abel}')
+            breakpoint()
             # arguments_embed_list = list(itertools.chain(*arguments_embed_list)) # list of lists into a list
             arguments_embed_list = arguments_embed_list[-NUM_TURNS:]
+            # arguments_embed_list = arguments_embed_list[:NUM_TURNS]
             d['graph'] = arguments_embed_list 
             # d['arg_len'] = arguments_len_list
             assert len(arguments_embed_list) == NUM_TURNS, f'Number of turns is {len(arguments_embed_list)}'
@@ -195,13 +222,86 @@ def load_dataset():
         print('Generating data...')
         generate_data()
 
+def get_stats(file=config.proce_f):
+    """
+        This function to get stats of debate, including:
+            - Number of sentence made by Winner/Loser
+            - Number of countering/supporting connections made by Winner/Loser
+    """
+    import numpy as np
+    def get_connection(connection_type, connection_mat, threshold):
+        n = NUM_TURNS-1 if connection_type=='counter' else NUM_TURNS-2
+        first_connection, second_connection = 0, 0
+        for i in range(n):
+            # Pro made 2 counters, 2 supports
+            # Con made 3 counters, 2 supports
+            connection = connection_mat[i].T # Transposition to get similarity score from t -> t-1
+            A = np.where(connection>=threshold, 1, 0)
+            num_connections = np.sum(A) # / connection.shape[0]
+            if i % 2:
+                second_connection += num_connections
+            else:
+                first_connection += num_connections
+        if connection_type == 'counter':
+            pro_connection, con_connection = first_connection/2, second_connection/3
+        else:
+            pro_connection, con_connection = second_connection/2, first_connection/2
+        return pro_connection, con_connection 
+    
+    winner_stats = {
+        'number_of_sentence_per_turn': 0.0,
+        'number_of_counter_edges': 0.0,
+        'number_of_support_edges': 0.0
+    }
+    loser_stats = {
+        'number_of_sentence_per_turn': 0.0,
+        'number_of_counter_edges': 0.0,
+        'number_of_support_edges': 0.0
+    }
+
+    with open(file, 'rb') as f:
+        train, dev, test = pickle.load(f)
+        dataset = train + dev + test
+        num_debates = len(dataset)
+        for d in dataset:
+            arguments_embed_list = d['graph']
+            winner = d['label'] # 1: Pro, 0: Con
+            # intra_sim_list = d['adj']['intra_adj']
+            counter_sim_list = d['adj']['counter_adj']
+            support_sim_list = d['adj']['support_adj']
+
+            len_sents = [len(a) for a in arguments_embed_list]
+            number_sent_pro, number_sent_con = 0 , 0
+
+            # number of sentence per turn
+            for i in range(NUM_TURNS):
+                if i % 2:
+                    number_sent_con += len_sents[i]
+                else:
+                    number_sent_pro += len_sents[i]
+            winner_stats['number_of_sentence_per_turn'] += number_sent_pro if winner == 1 else number_sent_con
+            loser_stats['number_of_sentence_per_turn'] += number_sent_con if winner == 1 else number_sent_pro
+
+            # number of counter edges
+            pros_counter, cons_counter = get_connection('counter', counter_sim_list, 0.85)
+            pros_support, cons_support = get_connection('support', support_sim_list, 0.85)
+            winner_stats['number_of_counter_edges'] += pros_counter if winner == 1 else cons_counter
+            loser_stats['number_of_counter_edges'] += cons_counter if winner == 1 else pros_counter
+            winner_stats['number_of_support_edges'] += pros_support if winner == 1 else cons_support
+            loser_stats['number_of_support_edges'] += cons_support if winner == 1 else pros_support
+        f.close()
+        
+        for k in winner_stats.keys():
+            winner_stats[k] /= num_debates
+            loser_stats[k] /= num_debates
+        winner_stats['number_of_sentence_per_turn'] /= 3
+        loser_stats['number_of_sentence_per_turn'] /= 3
+
+        print('Winner #sentences: {number_of_sentence_per_turn}, Winner #Countering_edges: {number_of_counter_edges}, \
+              Winner #Supporting_edges: {number_of_support_edges}'.format(**winner_stats))
+        print('Loser #sentences: {number_of_sentence_per_turn}, Loser #Countering_edges: {number_of_counter_edges}, \
+              Loser #Supporting_edges: {number_of_support_edges}'.format(**loser_stats))
 
 if __name__ == '__main__':
-    # load_data()
-    with open('title.txt','r') as rf:
-        titles = rf.readlines()
-    
-    # titles = titles[:100]
-    titles = [t.replace('\n','') for t in titles]
-    
-    generate_data(titles)
+    print('Getting stats of dataset ---')
+    get_stats()

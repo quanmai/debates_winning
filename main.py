@@ -5,11 +5,12 @@ import pytorch_lightning as pl
 from utils.config import config
 from model.trainer import Train_GraphConversation
 from model.callbacks import EarlyStopping
+import glob
 
 if __name__ == "__main__":
     model = Train_GraphConversation(config)
     logger = pl.loggers.TensorBoardLogger(
-        save_dir='.'
+        save_dir='./run100' if config.run100 or config.test_ver else '.'
     )
 
     ckpt_args = dict(
@@ -49,18 +50,24 @@ if __name__ == "__main__":
         precision=config.precision,
         # enable_progress_bar = False,
     )
+    if isinstance(trainer_config['devices'], list) and len(trainer_config['devices']) > 1:
+        trainer_config['strategy'] = 'ddp'
+        print(trainer_config['strategy'])
     print(f'lr = {config.lr}')
-    trainer = pl.Trainer(**trainer_config)
     if config.accelerator=='gpu':
         torch.set_float32_matmul_precision('medium')
+    trainer = pl.Trainer(**trainer_config)
 
-    if not config.test:
+    if config.test_ver == 0:
         trainer.fit(model)
         trainer.validate(model)
-        # trainer.test(model, ckpt_path=logger.log_dir) #ogger.log_dir
         ckpt_callback.best_model_path
-        trainer.test(model,ckpt_path='best')
-    else:
-        test_model = config.test_model
+        trainer.test(model,ckpt_path='best') #last
+    else: # test mode
+        ver = 'version_' + str(config.test_ver)
+        path = 'lightning_logs/' + ver
+        dir = os.path.join(path, '*ckpt')
+        test_model = glob.glob(dir)[0]
         model = model.load_from_checkpoint(test_model)
         trainer.test(model)
+    print(logger.log_dir)

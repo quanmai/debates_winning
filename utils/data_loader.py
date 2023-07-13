@@ -11,9 +11,8 @@ from utils.helpers import top_k_sparsify, threshold_sparsity
 
 
 class ArgDataset(Dataset):
-    def __init__(self, data, vocab):
+    def __init__(self, data):
         self.data = data
-        self.vocab = vocab
 
     def _add_node(self, G, turn, argument, offset, title):
         """ Add nodes & edges for each turn """
@@ -136,49 +135,49 @@ class ArgDataset(Dataset):
         return G
     
 
-# def collate_fn(data):
-#     graphs, labels = map(list, zip(*data))
-#     batched_graph = dgl.batch(graphs)
-#     return batched_graph, torch.tensor(labels)
-
 def collate_fn(data):
-    """ Padding sequences of various length 
-        Each turn should have same number of sentences (#nodes)
-        Is this 2-dim padding? -> No, 1, cuz we have same #turns
-    """
-    B = len(data)
-    item = {}
-    for k in data[0].keys():
-        item[k] = [d[k] for d in data] # (B, l) : l is different among items in batch 
-        #                                         that's why we have to pad :-)
-    num_nodes = item['total_nodes']
-    max_num_nodes = np.max(item['total_nodes']) # maximum node in a batch
-    masked_nodes = _pad_1d(num_nodes, B, max_num_nodes)
-    batched_graph=dgl.batch(item['graph'])
-    assert batched_graph.batch_size == B
-    # print(item['label'])
-    label = torch.tensor(item['label'])
-    # utter = _pad_nodes(item['utter'])
+    graphs, labels = map(list, zip(*data))
+    batched_graph = dgl.batch(graphs)
+    return batched_graph, torch.tensor(labels)
 
-    return dict(
-        label=label,
-        batched_graph=batched_graph,
-        masked_nodes=masked_nodes,
-        max_num_nodes=max_num_nodes,
-        # utter=utter,
-    )
+# def collate_fn(data):
+#     """ Padding sequences of various length 
+#         Each turn should have same number of sentences (#nodes)
+#         Is this 2-dim padding? -> No, 1, cuz we have same #turns
+#     """
+#     B = len(data)
+#     item = {}
+#     for k in data[0].keys():
+#         item[k] = [d[k] for d in data] # (B, l) : l is different among items in batch 
+#         #                                         that's why we have to pad :-)
+#     num_nodes = item['total_nodes']
+#     max_num_nodes = np.max(item['total_nodes']) # maximum node in a batch
+#     masked_nodes = _pad_1d(num_nodes, B, max_num_nodes)
+#     batched_graph=dgl.batch(item['graph'])
+#     assert batched_graph.batch_size == B
+#     # print(item['label'])
+#     label = torch.tensor(item['label'])
+#     # utter = _pad_nodes(item['utter'])
 
-def _pad_1d(x, batch_size, pad_len):
-    """ Nodes masking """
-    mask = torch.ones(batch_size, pad_len, dtype=torch.int8)
-    for i, _x in enumerate(x):
-        mask[i][:_x] = 0
-    return mask
+#     return dict(
+#         label=label,
+#         batched_graph=batched_graph,
+#         masked_nodes=masked_nodes,
+#         max_num_nodes=max_num_nodes,
+#         # utter=utter,
+#     )
 
-def _pad_nodes(x, pad_len, nhid):
-    """ Pad dummy nodes """
-    pad = torch.zeros((pad_len, nhid), dtype=torch.float32)
-    xlen = x.shape[0]
-    assert xlen > pad_len
-    pad[:xlen] = x
-    return pad
+# def _pad_1d(x, batch_size, pad_len):
+#     """ Nodes masking """
+#     mask = torch.ones(batch_size, pad_len, dtype=torch.int8)
+#     for i, _x in enumerate(x):
+#         mask[i][:_x] = 0
+#     return mask
+
+# def _pad_nodes(x, pad_len, nhid):
+#     """ Pad dummy nodes """
+#     pad = torch.zeros((pad_len, nhid), dtype=torch.float32)
+#     xlen = x.shape[0]
+#     assert xlen > pad_len
+#     pad[:xlen] = x
+#     return pad

@@ -174,7 +174,7 @@ CUDA_VISIBLE_DEVICES=6 python main.py \
 395: Same as 394, nhead = 1
 
 
-396: add resident connection: hprime = x + self.grucell(x, h)
+396: add residual connection: hprime = x + self.grucell(x, h)
 CUDA_VISIBLE_DEVICES=6 python main.py \
                     --batch-size 128 \
                     --nhid 32 \
@@ -245,8 +245,383 @@ CUDA_VISIBLE_DEVICES=6 python main.py \
 
     --> no help :-<
 
+
+    h=GRU(hc, hs)     h_prime=GRU(x, h)
+0        0               0
+1        0               1
+2        1               0
+3        1               1
+
+
 457: Same 455, new code
         g.pull(v=node_id, message_func=self._message_func, reduce_func=self._reduce_func)
 459: Change to         
         g.pull(v=dst_nodes, message_func=self._message_func, reduce_func=self._reduce_func)
+        -> test_loss: 0.6861, test_acc: 0.6011, test_f1: 0.1861
+460: 459 v1, change hprime to gru
+    --> Better val F-1
+    -> test_loss: 0.7256, test_acc: 0.5311, test_f1: 0.4205
+461: 459 v3, full gru
+    -> test_loss: 0.6626, test_acc: 0.5986, test_f1: 0.3691
+462: 459 v2: h: gru, hprime=0.5*x + 0.5*h (contrast to 460)
+    -> test_loss: 0.6572, test_acc: 0.6340, test_f1: 0.2954
+463: 460 runs on 6-turns dataset (v1)                           <- GOLDEN for v1
+    -> test_loss: 0.6754, test_acc: 0.5874, test_f1: 0.4339
+464: 461 runs on 6-turns dataset (v3)
+    -> test_loss: 0.6569, test_acc: 0.6020, test_f1: 0.1969
+465: 462 runs on 6-turns dataset (v2)
+    -> test_loss: 0.6791, test_acc: 0.5392, test_f1: 0.3069     <- Overfitting
+466: no gru on 6-turns dataset (v0)                             <- GRU DOES HELP!! HAVE TO USE AT LEAST 1
+    -> test_loss: 0.6719, test_acc: 0.6153, test_f1: 0.0380      
 
+
+*---From now on, we will use v1 setting if no further information mentioned---*
+
+
+467: v1, bidirection:
+    -> test_loss: 0.6699, test_acc: 0.6025, test_f1: 0.2819
+    -> no help
+468: v1, change hprime to GRU(h, x)                             <- SHOULD KEEP GRU(x, h)
+    -> test_loss: 0.6508, test_acc: 0.6156, test_f1: 0.1155 (lower f1)
+    -> should keep GRU(x, h)
+
+469: v1, seperate interaction xgat                              <- SEPERATE ITYPE GRU DOESNT REALLY HELP
+    -> test_loss: 0.6691, test_acc: 0.6025, test_f1: 0.2952
+
+470: same xgat, counter_coeff to 0.8 (like 463 but increase counter_coeff)  <- CHANGE COUNTER COEFF
+    -> test_loss: 0.6612, test_acc: 0.6000, test_f1: 0.2700
+
+471: 463, v1, add a gat layer                                   <- ADD MORE GAT LAYERS NO HEPP!
+    -> test_loss: 0.6924, test_acc: 0.5462, test_f1: 0.2482
+472: 471, seperate interaction xgat
+    -> test_loss: 0.6727, test_acc: 0.6056, test_f1: 0.1166
+473: 463, v1, using all max _read_out_loud
+
+474: using threshold 0.75                                       <- THRESHOLDING
+    -> test_loss: 0.6776, test_acc: 0.5490, test_f1: 0.3421
+475: using threshold 0.85
+    test_loss: 0.6650, test_acc: 0.6150, test_f1: 0.2302
+476: using threshold 0.9
+    test_loss: 0.6673, test_acc: 0.5663, test_f1: 0.3530
+477: using threshold 0.9, degree_encoder nfeat                  <- ADD DEGREE ENCODER TO NFEAT
+    Does not help <- Oversmoothing effect!
+    test_loss: 0.6669, test_acc: 0.6025, test_f1: 0.1227
+478: using threshold 0.9, degree_encoder nhid, direction=both   <- ADD DEGREE AFTER GRU PHASE DOES HELP FOR THRESHOLDING
+    -> test_loss: 0.6794, test_acc: 0.5858, test_f1: 0.2869
+479: using threshold 0.9, degree_encoder nhid, direction=in
+    -> test_loss: 0.6852, test_acc: 0.5810, test_f1: 0.3116
+480: using threshold 0.9, degree_encoder nhid, direction=out
+    -> test_loss: 0.6779, test_acc: 0.6167, test_f1: 0.1494
+481: using topk, degree_encoder nhid, direction=in (should compare with 479 and 463)
+    -> test_loss: 0.6631, test_acc: 0.5936, test_f1: 0.3343
+482: 481+gnn                                                    <- GNN AFTER
+    -> test_loss: 0.6579, test_acc: 0.6282, test_f1: 0.2238     
+483: 481 + attn
+    -> test_loss: 0.7551, test_acc: 0.5041, test_f1: 0.3259     <- ATTENTION DOES NOT HELP
+
+484: 481, h = h_c + self.gruinter(h_c, h_s) (v3)                
+    -> test_loss: 0.6618, test_acc: 0.6365, test_f1: 0.1360
+485: v3, full residual                                      
+    -> test_loss: 0.6790, test_acc: 0.5894, test_f1: 0.2468
+486: add residual connection inside gat:                        <- NO HELP
+    -> test_loss: 0.6669, test_acc: 0.6310, test_f1: 0.1229
+487: v1, new pooling (based on attn score)                      <- NO HELP
+    -> test_loss: 0.6650, test_acc: 0.6304, test_f1: 0.0964
+488, new pooling (mean)                                         <- NO HELP, SHOULD REMOVE SOFTMAX ATTN SCORE
+    -> test_loss: 0.6843, test_acc: 0.6379, test_f1: 0.1750
+489: new pooling min-max                                        <- NO HELP, SHOULD REMOVE SOFTMAX ATTN SCORE
+    -> test_loss: 0.6613, test_acc: 0.6443, test_f1: 0.1653
+490: 489, remove softmax attn score
+    -> test_loss: 0.6774, test_acc: 0.5241, test_f1: 0.3794     <- !!!
+491: 490, max-max
+    -> test_loss: 0.6650, test_acc: 0.6368, test_f1 = 0.0
+
+492: min - max, but keep track of val_f1                        <- JUST STICK WITH LOSS TRACKING
+    -> test_loss: 0.7254, test_acc: 0.4433, test_f1: 0.4494
+493: attn in read_out, using sum
+    -> test_loss: 0.6499, test_acc: 0.6452, test_f1: 0.0211
+494: 493, nhid64                                                <- USING NHID64
+    -> test_loss: 0.8652, test_acc: 0.5844, test_f1: 0.4661
+495: 494, lr = 1e-04
+    -> test_loss: 0.6685, test_acc: 0.6285, test_f1: 0.2172
+496: 495, max-min
+    -> test_loss: 0.6534, test_acc: 0.6321, test_f1: 0.1861
+497: min-max
+    -> test_loss: 0.6506, test_acc: 0.6296, test_f1: 0.0642
+498: sum                                                        <- READOUT SUM HELPS
+    -> test_loss: 0.6620, test_acc: 0.6296, test_f1: 0.2929
+499: 498, threshold 0.85                                        <- BEST SO FAR
+    -> test_loss: 0.6397, test_acc: 0.6432, test_f1: 0.3074
+500: threshold 0.8
+    -> test_loss: 0.6721, test_acc: 0.5696, test_f1: 0.1945
+501: threshold 0.9
+    -> test_loss: 0.6678, test_acc: 0.6100, test_f1: 0.3221
+502: 499, no degree_encoder                                     <- DEGREE ENCODER HELPS
+    -> test_loss: 0.6914, test_acc: 0.5897, test_f1: 0.3493
+503: 502, NHID128                                               <- NHID128 DOESNT HELP
+    -> test_loss: 0.6876, test_acc: 0.5816, test_f1: 0.3126
+    -> test_loss: 0.7164, test_acc: 0.5852, test_f1: 0.3273 
+504: 498 (k=3), ADD 1  more FC layer
+    -> test_loss: 0.6511, test_acc: 0.6510, test_f1: 0.0404     <- NAH
+
+507: loss pair BCE
+    -> test_loss: 0.6564, test_acc: 0.6354, test_f1: 0.2374
+    -> test_loss: 0.6562, test_acc: 0.6335, test_f1: 0.2568
+    -> test_loss: 0.6618, test_acc: 0.5967, test_f1: 0.2737
+    -> test_loss: 0.6635, test_acc: 0.5947, test_f1: 0.2725
+508: loss PairHingeLoss                                         <- NAH
+    -> test_loss: 0.8116, test_acc: 0.6432, test_f1: 0.1183
+509: binary, gru_read_out
+    -> test_loss: 0.6701, test_acc: 0.6452, test_f1: 0.0928
+510: loss pair BCE, threshold
+    -> test_loss: 0.6606, test_acc: 0.5866, test_f1: 0.2695
+511: input all 1, CHECKING ONLY
+
+512: pair, topk, bidirection
+    -> test_loss: 0.6480, test_acc: 0.6388, test_f1: 0.2329
+513: binary, topk, bidirection
+    -> test_loss: 0.6500, test_acc: 0.6432, test_f1: 0.0000
+514: 513, nhid32
+    -> test_loss: 0.6714, test_acc: 0.6354, test_f1: 0.0294
+515: pair, remove attn softmax, using mean readout, nhid32              <- THE FUCKKKKK
+    -> test_loss: 0.6522, test_acc: 0.6619, test_f1: 0.4148
+516: 515, keep attn softmax                 
+    -> test_loss: 0.6863, test_acc: 0.6039, test_f1: 0.0899
+517: gru readout, concat, pair
+    -> test_loss: 0.6586, test_acc: 0.6452, test_f1: 0.0104
+518: 517 running on 1st_6_turns dataset
+    -> test_loss: 0.6597, test_acc: 0.6452, test_f1: 0.0208
+519: try to replicate 515, using vanila readout
+    -> test_loss: 0.6738, test_acc: 0.6072, test_f1: 0.3450
+520: try to replicate 515, remove attn softmax, using mean readout, nhid32 <- REMOVE ATTN SOFTMAX, USING MEAN BETTER
+    -> test_loss: 0.6526, test_acc: 0.6148, test_f1: 0.3610
+521: 520 + bidirection
+    -> test_loss: 0.6644, test_acc: 0.6343, test_f1: 0.2332
+    -> test_loss: 0.6631, test_acc: 0.6446, test_f1: 0.2386
+522: 520 + nhid64
+    -> test_loss: 0.6716, test_acc: 0.6173, test_f1: 0.2804
+523: run 521 on 500 epochs
+    -> test_loss: 0.6555, test_acc: 0.6220, test_f1: 0.1215
+524: run 522 on 500 epochs
+    -> test_loss: 0.7059, test_acc: 0.5548, test_f1: 0.2546
+525: 520, threshold 0.85
+    -> test_loss: 0.6665, test_acc: 0.6452, test_f1: 0.0000
+526: 520, seperate interaction gru                                      <- INTERACTION GRU
+    -> test_loss: 0.6695, test_acc: 0.6045, test_f1: 0.0804
+527: 520, top3, gru readout, remove attn softmax, mean
+
+530: 527 using modified topk (k=3)
+
+532: 530 k=5
+    -> test_loss: 0.6716, test_acc: 0.5833, test_f1: 0.3652
+533: 532 threshold 0.7
+    -> test_loss: 0.6583, test_acc: 0.6413, test_f1: 0.2431 (best)
+    -> test_loss: 0.6551, test_acc: 0.6329, test_f1: 0.2191 (last)
+
+534: Using GNN after, encoding, top5
+    -> test_loss: 0.6642, test_acc: 0.6438, test_f1: 0.3877 (last)
+535: no GNN, using embedding, top5
+    -> test_loss: 0.6642, test_acc: 0.6242, test_f1: 0.2298 (last)
+536: no GNN, no embedding, degree_encoder both first, top5 (compare with 532, degree_encoder in after)
+    -> test_loss: 0.6561, test_acc: 0.6279, test_f1: 0.1470
+537: no GNN, no embedding, degree_encoder both first, threshold 0.7
+    -> test_loss: 0.6553, test_acc: 0.6206, test_f1: 0.0389
+538: 537, binary gru readout (compary with 537)
+    -> test_loss: 0.6584, test_acc: 0.6265, test_f1: 0.1111
+539: no GNN, no embedding, degree_encoder both after, top5 (compare with 536)
+    -> test_loss: 0.6477, test_acc: 0.6231, test_f1: 0.2639
+540: no ggn, degree_encoder in after, topk5, run on new             <- NEW GENED DATASET 
+    -> test_loss: 0.6716, test_acc: 0.6044, test_f1: 0.2334
+
+
+-----5 SENTENCE DATASET-----
+        Train: 0.3559 - 0.6441
+        Val: 0.4131 - 0.5869
+        Test: 0.3948 - 0.6052               : GOAL: atlast 65 acc.
+
+541: 540          
+    -> test_loss: 0.6782, test_acc: 0.5557, test_f1: 0.3348 (best)
+    -> test_loss: 0.6801, test_acc: 0.5453, test_f1: 0.2849 (last)
+542: 541 no node_encoder
+    -> test_loss: 0.6764, test_acc: 0.5441, test_f1: 0.4002 (last)
+543: using config nogat, vanila readout, pair, no node_encoder, top5       <- NO GRU-GAT PERFORMS BETTER @@
+    -> test_loss: 0.6666, test_acc: 0.6246, test_f1: 0.2617
+544: 543, using one score1 matrix
+    -> test_loss: 0.6801, test_acc: 0.5727, test_f1: 0.4905
+545: 542 ranking loss                                               <- RANKING LOSS SUCKS
+    -> test_loss: 0.0477, test_acc: 0.5117, test_f1: 0.3962
+546: 543, top3
+    -> test_loss: 0.6683, test_acc: 0.6207, test_f1: 0.3376         <- LOL
+547: GATGRU, readout, top3, nhid32
+    -> test_loss: 0.6736, test_acc: 0.6169, test_f1: 0.2989 (last)
+    -> test_loss: 0.6732, test_acc: 0.6001, test_f1: 0.2857 (best)
+548: 547 , nhid 128
+    -> test_loss: 0.6765, test_acc: 0.5766, test_f1: 0.3348 (last)
+    -> test_loss: 0.6765, test_acc: 0.5649, test_f1: 0.3670 (best)
+
+549: 547 using v2 settings
+    -> test_loss: 0.6773, test_acc: 0.6089, test_f1: 0.3645 (last, worst than v1)
+    -> test_loss: 0.6747, test_acc: 0.6050, test_f1: 0.3544 (better than v1)
+
+550: 546, adding GAT (nfeat, 128)
+    -> test_loss: 0.6767, test_acc: 0.6156, test_f1: 0.3363 (last)
+551: 547, vanila readout
+    -> test_loss: 0.6832, test_acc: 0.5830, test_f1: 0.2288         <- VANILA READOUT NOT WORK WITH GATGRU
+
+552: 549 + turn_embeddings (second)
+    -> test_loss: 0.7024, test_acc: 0.5623, test_f1: 0.1894
+553: 549 + turn_embeddings (first)
+    -> test_loss: 0.6840, test_acc: 0.5740, test_f1: 0.0918
+577: 549 + node_embeddings (first)
+    -> test_loss: 0.6788, test_acc: 0.5870, test_f1: 0.0354 (last)
+    -> test_loss: 0.6819, test_acc: 0.5883, test_f1: 0.0640 (best)
+578: 549 + node_embeddings (second)
+    -> test_loss: 0.6790, test_acc: 0.6065, test_f1: 0.1068 (last)
+    -> test_loss: 0.6789, test_acc: 0.6000, test_f1: 0.0117 (best)
+
+580: 578 + threshold 0.85 (second)
+    -> test_loss: 0.6762, test_acc: 0.6129, test_f1: 0.0487
+582: 577 + threshold 0.85 (first)
+    -> test_loss: 0.6721, test_acc: 0.6013, test_f1: 0.0672
+583: 582, v3 ( DOES NOT SEEM WORK)
+    -> test_loss: 0.6721, test_acc: 0.6013, test_f1: 0.0000
+584: 582 + attn softmax in read_out (mean)
+    -> test_loss: 0.6959, test_acc: 0.5961, test_f1: 0.0267
+585: 582 + attn softmax in read_out (sum)
+    -> test_loss: 0.6732, test_acc: 0.6091, test_f1: 0.0360
+586: 582 only intra-gat
+    -> test_loss: 0.6797, test_acc: 0.6052, test_f1: 0.0946        <- ONLY INTRA-GAT
+587: 582, v1 add resident (x+gru)
+    -> test_loss: 0.6842, test_acc: 0.6026, test_f1: 0.0000
+588: 582, v1, gru_read_out
+    -> test_loss: 0.7005, test_acc: 0.5479, test_f1: 0.1549
+589: 582, v1, only h_c, _read_out_loud mean no attn softmax
+    -> test_loss: 0.6926, test_acc: 0.5338, test_f1: 0.3338
+
+590: 589, v1, only h_c, _read_out_loud mean no attn softmax, GAT2
+    -> test_loss: 0.6749, test_acc: 0.5974, test_f1: 0.0430
+591: 590, h_c and h_s, v1
+    -> 0.6880, test_acc: 0.6052, test_f1: 0.0000
+592: 590, h_c and h_s, v3
+    -> test_loss: 0.6700, test_acc: 0.6052, test_f1: 0.0000
+    -> s1 < s2 < 0
+593: h_c GAT2, h_s GAT, v1
+    -> test_loss: 0.6700, test_acc: 0.6052, test_f1: 0.0000
+    -> 0 < s1 < s2
+594: h_c GAT2, h_s GAT, v1, no embeddings
+    -> test_loss: 0.6979, test_acc: 0.5377, test_f1: 0.3255
+595: 591, vanila readout
+    -> test_loss: 0.6725, test_acc: 0.6091, test_f1: 0.0190
+596: 595 no debater embedding
+    -> test_loss: 0.6708, test_acc: 0.6013, test_f1: 0.0496
+597: 596, second embedding using cat
+    -> test_loss: 0.6801, test_acc: 0.6014, test_f1: 0.2448
+598: 597 binary
+    -> test_loss: 0.6999, test_acc: 0.5689, test_f1: 0.2626         <- BINARY SUCKSSSS ASFFFFF
+
+600: first embedding (all), seperate GAT2 for h_c h_s, v1
+    -> test_loss: 0.6673, test_acc: 0.6078, test_f1: 0.0119
+601: 600 no embedding
+    -> test_loss: 0.6716, test_acc: 0.6039, test_f1: 0.1319 
+        s1: tensor([-0.4760, -0.5246, -0.5424, -0.4411, -0.5804, -0.5599, -0.4562, -0.4947,
+        -0.6302, -0.5278, -0.6716, -0.5449, -0.4687, -0.6427, -0.5341, -0.5252,
+        -0.5774, -0.4330, -0.4769, -0.4877, -0.5207, -0.4636, -0.5611, -0.5258,
+        -0.4968, -0.3799, -0.5521, -0.5569, -0.2548, -0.5810, -0.7744, -0.5728,
+        -0.6993, -0.4373, -0.4458, -0.5534, -0.6441, -0.2758, -0.4747, -0.5103,
+        -0.5879, -0.5636, -0.5252, -0.5025, -0.6084, -0.5881, -0.5331, -0.4767,
+        -0.6734, -0.4731, -0.5780, -0.6204, -0.5172, -0.6925, -0.5775, -0.5077,
+        -0.6301, -0.6248, -0.4281, -0.5176, -0.4772, -0.5290, -0.6210, -0.7124,
+        -0.5763, -0.5243, -0.6783, -0.4265, -0.5827, -0.7149, -0.6775, -0.6673,
+        -0.4717, -0.7715, -0.4956, -0.6008, -0.7337, -0.6682, -0.4648, -0.3947,
+        -0.4611, -0.4797, -0.3631, -0.6706, -0.3214, -0.4417], device='cuda:0')
+s2: tensor([ 0.0497,  0.2073,  0.0558,  0.1211, -0.2294, -0.2620, -0.1038, -0.0463,
+         0.4729,  0.0382, -0.2781, -0.1216, -0.1382,  0.1684, -0.2487, -0.2046,
+        -0.1432, -0.3170, -0.2629, -0.0933,  0.0492,  0.0102, -0.3465, -0.1959,
+        -0.0937,  0.2019,  0.0754, -0.2128, -0.1337, -0.2499, -0.5135, -0.3771,
+        -0.3926,  0.0213, -0.0815, -0.1516, -0.7029, -0.2792,  0.0302, -0.0339,
+        -0.1485,  0.1892, -0.7176,  0.2520, -0.2913, -0.2249,  0.1009, -0.1857,
+        -0.7960, -0.4485, -0.0924, -0.4856, -0.1573,  0.6174, -0.2653,  0.0296,
+         0.0169, -0.1461, -0.2085, -0.0502, -0.1577, -0.5836,  0.1531, -0.4106,
+         0.0340,  0.0286, -0.1161,  0.1103, -0.6876, -0.2846,  0.1148, -0.3383,
+        -0.1141,  0.0904, -0.1694,  0.0861, -0.3517, -0.1805, -0.0117, -0.7273, ])
+602: 601, seperate GAT2 for each user/interaction
+    -> test_loss: 0.6831, test_acc: 0.6091, test_f1: 0.0688
+603: 601, GATGRU2
+    -> test_loss: 0.6775, test_acc: 0.6000, test_f1: 0.0117
+604: 603, embedding first (no pos)
+    -> test_loss: 0.6760, test_acc: 0.5844, test_f1: 0.2504
+605: 604, same score1
+    -> test_loss: 0.6736, test_acc: 0.6091, test_f1: 0.1379
+    -> test_loss: 0.6739, test_acc: 0.6065, test_f1: 0.1290 (best)
+
+
+
+----
+
+608: v1 old version, seperate sgat cgat, readout mean no attn softmax, top3, only score1, pair, no embeddings
+    -> test_loss: 0.6778, test_acc: 0.5870, test_f1: 0.2431
+610: 608 using GAT2 for hs hc
+    -> test_loss: 0.6714, test_acc: 0.5884, test_f1: 0.4026 (best)
+    -> test_loss: 0.6721, test_acc: 0.5896, test_f1: 0.4134 (best)
+    -> test_loss: 0.6710, test_acc: 0.5818, test_f1: 0.3744 (last)
+611: 608, using score2 (1 more FC)
+    -> test_loss: 0.6890, test_acc: 0.5687, test_f1: 0.3622
+    -> test_loss: 0.6930, test_acc: 0.5713, test_f1: 0.3635
+612: 610, using score2 (1 more FC)
+    -> test_loss: 0.6495, test_acc: 0.5987, test_f1: 0.2621
+613: 608, using score 3 (less para)
+    -> test_loss: 0.6844, test_acc: 0.5571, test_f1: 0.3954
+614: 610, using score 3 (less para)
+    -> test_loss: 0.6806, test_acc: 0.5623, test_f1: 0.2563
+615: 608, using score 4 (2 more FC)
+    -> test_loss: 0.6827, test_acc: 0.5675, test_f1: 0.2864
+
+616: 610, using score 4 (2 more FC)
+    -> test_loss: 0.6820, test_acc: 0.5610, test_f1: 0.3387
+
+
+    --DegreeEncoder---
+
+618: 608, degree embedding both
+    -> test_loss: 0.6689, test_acc: 0.5922, test_f1: 0.0503
+619: 608, degree embedding in
+    -> test_loss: 0.6710, test_acc: 0.5922, test_f1: 0.1378
+620: 608, degree embedding out
+    -> test_loss: 0.6865, test_acc: 0.5896, test_f1: 0.2337 (last)
+    -> test_loss: 0.6875, test_acc: 0.5793, test_f1: 0.2904 (best)
+    -> test_loss: 0.6861, test_acc: 0.5897, test_f1: 0.2895 (best)
+
+
+621: 610, degree embedding both
+    -> test_loss: 0.6700, test_acc: 0.6065, test_f1: 0.0606
+622: 610, degree embedding in
+    -> test_loss: 0.6688, test_acc: 0.6052, test_f1: 0.0000
+623: 610, degree embedding out
+    -> test_loss: 0.6814, test_acc: 0.6066, test_f1: 0.2253             <- Out help
+
+
+
+
+
+624: 620 + pos-emb
+    -> test_loss: 0.6735, test_acc: 0.5910, test_f1: 0.1352
+625: 623 + pos-emb
+    -> test_loss: 0.6772, test_acc: 0.5885, test_f1: 0.1896
+
+
+626: 620 + turn-emb
+    -> test_loss: 0.6695, test_acc: 0.6168, test_f1: 0.0541
+627: 623 + turn-emb
+    -> test_loss: 0.6735, test_acc: 0.5987, test_f1: 0.0906
+
+628: 620 + user-emb
+    -> test_loss: 0.6842, test_acc: 0.6104, test_f1: 0.0345
+629: 623 + user-emb
+    -> test_loss: 0.6730, test_acc: 0.6026, test_f1: 0.0655
+
+
+630: 620 + res in directgat
+    -> test_loss: 0.6894, test_acc: 0.5948, test_f1: 0.2112
+631: 623 + res in directgat
+    -> test_loss: 0.6601, test_acc: 0.6194, test_f1: 0.1382
+    -> test_loss: 0.6564, test_acc: 0.6168, test_f1: 0.1151 (last)

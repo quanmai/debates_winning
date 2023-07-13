@@ -16,6 +16,15 @@ parser.add_argument('--is-counter', action='store_true', default=False)
 parser.add_argument('--is-support', action='store_true', default=False)
 parser.add_argument('--debug', action='store_true', default=False)
 parser.add_argument('--gendata', action='store_true', default=False)
+parser.add_argument('--nogat', action='store_true', default=False, help='Using nogat to disable GRU-GAT')
+parser.add_argument('--v1', action='store_true', default=False, help='Using v1 setting GRU-GAT')
+parser.add_argument('--v2', action='store_true', default=False, help='Using v2 setting GRU-GAT')
+parser.add_argument('--v3', action='store_true', default=False, help='Using v3 setting GRU-GAT')
+parser.add_argument('--res', action='store_true', default=False, help='Residual connection in GAT')
+parser.add_argument('--pos-emb', action='store_true', default=False, help='Position Embedding')
+parser.add_argument('--turn-emb', action='store_true', default=False, help='Turn Embedding')
+parser.add_argument('--user-emb', action='store_true', default=False, help='User Embedding')
+parser.add_argument('--embedding', type=str, choices=['first', 'second', ''], default='', help='Node encoder type')
 parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'adamw', 'adamax'], default='adam', help='Optimizer: sgd, adamw, adamax, adam')
 parser.add_argument('--loss', type=str, choices=['pair', 'binary', 'ranking'], default='pair', help='Loss types')
 parser.add_argument('--mode', type=str, choices=['bidirection', 'unidirection'], default='unidirection', help='Mode types')
@@ -32,6 +41,50 @@ parser.add_argument('--gat-layers', type=int, choices=[1, 2], default=1, help='N
 parser.add_argument('--test-ver', type=int, default=0, help='Test Model Version')
 parser.add_argument('--counter-coeff', type=float, default=0.5, help='Counter argument coefficient')
 
+
+parser.add_argument('--emb-dim', 
+                    type=int, 
+                    default=300, 
+                    help='Word embedding dimension')
+parser.add_argument('--pos-emb-dim', 
+                    type=int, 
+                    default=30, 
+                    help='POS embedding dimension')
+parser.add_argument('--ner-emb-dim', 
+                    type=int, 
+                    default=30, 
+                    help='NER embedding dimension')
+parser.add_argument('--rnn-layers', 
+                    type=int, 
+                    default=2, 
+                    help='Num of RNN layers.')
+parser.add_argument('--rnn-hidden-dim', 
+                    type=int, 
+                    default=64, 
+                    help='RNN hidden state size.')
+parser.add_argument('--rnn-dropout', 
+                    type=float, 
+                    default=0.2, 
+                    help='RNN dropout rate.')
+parser.add_argument('--input-dropout', 
+                    type=float, 
+                    default=0.2, 
+                    help='Input dropout rate for word embeddings')
+parser.add_argument('--tune_topk', 
+                    type=int, 
+                    default=1e10, 
+                    help='Only finetune top N word embeddings.')
+parser.add_argument('--fine-tune-we', 
+                    action='store_true', 
+                    default=False, 
+                    help='Fine-tune the GloVe word embeddings.')
+parser.add_argument('--strategy', 
+                    type=str, 
+                    choices=['ddp', 'ddp_spawn', ''], 
+                    default='', 
+                    help='Multi-GPUs training strategy.')
+
+
 args = parser.parse_args()
 class Config:
     def __init__(self, args) -> None:
@@ -39,11 +92,15 @@ class Config:
         self.train_f, self.dev_f, self.test_f = (os.path.join(self.data_dir, o) for o in ['train.json','dev.json','test.json'])
         # self.proce_f = os.path.join(self.data_dir, 'dataset_preproc.p')
         if self.run100:
-            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_100.p')
+            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_6_turns_100.p')
         else:
-            # self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_full.p')
-            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_6_turns.p')
+            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc.p')
         self.filtered_f = os.path.join(self.data_dir, 'data_all_argument.json')
+        self.glove_f = os.path.join(self.data_dir, 'glove.6B.300d.txt')
+        self.embed_f = os.path.join(self.data_dir, 'embeddings.npy')
+        self.embed_f_train = os.path.join(self.data_dir, 'embeddings_train.npy')
+        self.embed_f_dev = os.path.join(self.data_dir, 'embeddings_dev.npy')
+        self.embed_f_test = os.path.join(self.data_dir, 'embeddings_test.npy')
         self.gen_f = os.path.join(self.data_dir, 'data_gen.json')
         self.original_f = 'ddo/debates.json'
         self.bert = 'bert-base-uncased'
@@ -73,7 +130,7 @@ class Config:
             "there's": "there is", 
             "there're": "there are"
             }
-        self.nfeat = 384 #768 - Bert last hidden layer
+        self.nfeat = 128 # 384 #768 - Bert last hidden layer
         self.num_workers = 64
         self.shuffle = True # shuffle Training dataset
         self.precision = 32

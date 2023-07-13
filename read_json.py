@@ -9,5 +9,5 @@ f.close()
 #     print(k)
 with open('sample.json', 'w') as rf:
     # json.dump(debates['The-WWE-is-fake/1/'], rf)
-    json.dump(debates['abortion-legal-or-illegal/1/'], rf)
+    json.dump(debates['Animal-Testing-Joke-Debate/1/'], rf)
 rf.close()
