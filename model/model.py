@@ -6,10 +6,10 @@ from model.lstm import UtterEncoder
 from collections import OrderedDict
 
 class GraphGRUArgument(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, vocab):
         super().__init__()
         self.config = config
-        self.utter_enc = UtterEncoder(config) # sent-level encoder
+        self.utter_enc = UtterEncoder(config, vocab) # sent-level encoder
         self.graph = DebateGraph(config)
         self.score = nn.Sequential(OrderedDict([
                 ('bn1', nn.BatchNorm1d(1)),

@@ -6,15 +6,13 @@ from itertools import accumulate
 import numpy as np
 from utils.config import config
 
+MAX_TOKS= 175
+
 
 class Dataset(data.Dataset):
-    def __init__(self, data, vocab, embf):
+    def __init__(self, data, vocab):
         self.data = data
         self.vocab = vocab
-        self.wembs = torch.from_numpy(np.load(
-                                    open(embf, 'rb'),
-                                    allow_pickle=True)
-                                    ).float()
 
     def __len__(self):
         return len(self.data)
@@ -27,16 +25,16 @@ class Dataset(data.Dataset):
                                                            'intra',
                                                            'inter'))
         # utters: list[list[list[str]]] = debate <- turn <- sent <- token
-        tok = [[torch.LongTensor(self.vocab.map(o['tokens'])) # each token
+        tok = [[torch.LongTensor(self.vocab.map(o['tokens'][:MAX_TOKS])) # each token
                                 for o in u]        # each sent
                                 for u in utter]    # each turn
         
         pos = [[torch.LongTensor([constant.pos_dict[_pos]
-                                for _pos in o['pos']]) # each token
+                                for _pos in o['pos'][:MAX_TOKS]]) # each token
                                 for o in u]         # each sent
                                 for u in utter]       # each turn
         ner = [[torch.LongTensor([constant.ner_dict[_ner]
-                                for _ner in o['ner']]) # each token
+                                for _ner in o['ner'][:MAX_TOKS]]) # each token
                                 for o in u]         # each sent
                                 for u in utter]       # each turn
         
@@ -44,18 +42,19 @@ class Dataset(data.Dataset):
         # nsents: number of sentences in each turn: list[int]
         # e.g., [40, 31, 24, 52, 90, 12]
         nsents = [len(u) for u in utter] # list[int], len(list) = n
-        ntoks = [[len(u['tokens']) for u in uu] for uu in utter] # list[list[int]], len(list[0]) = m
+        ntoks = [[len(u['tokens'][:MAX_TOKS]) for u in uu] for uu in utter] # list[list[int]], len(list[0]) = m
         tmasks =  [[torch.LongTensor([1 for _ in range(o)])
                     for o in u]
                     for u in ntoks] # token masking
 
         maxnsents = max(nsents)
         maxntoks = max([max(a) for a in ntoks])
+
         # a = (maxntoks, title)
         # print(a)
-        wembs = [[self.wembs[o] # each token
-                    for o in u]        # each sent
-                    for u in tok]    # each turn
+        # wembs = [[self.wembs[o] # each token
+        #             for o in u]        # each sent
+        #             for u in tok]    # each turn
 
         return dict(
             utter=tok,
@@ -67,7 +66,7 @@ class Dataset(data.Dataset):
             tmasks=tmasks,
             maxnsents=maxnsents,
             maxntoks=maxntoks,
-            wembs=wembs,
+            # wembs=wembs,
             label=torch.tensor(label),
         )
     
@@ -186,7 +185,7 @@ def collate_fn(data):
                for bidx, oo in enumerate(item['nsents']) # bidx
                for tidx, o in enumerate(oo) # tidx
                for sidx in range(o)] # sidx
-    wembs = _pad_wembs(item['wembs'])
+    # wembs = _pad_wembs(item['wembs'])
 
     return dict(
         utter=utter,
@@ -195,7 +194,7 @@ def collate_fn(data):
         mask=mask, # token masking
         nmask=nmask, # node masking
         nodeidx=nodeidx,
-        wembs=wembs,
+        # wembs=wembs,
         graph=dgl.batch(item['graph']),
         label=torch.stack(item['label'])
     )

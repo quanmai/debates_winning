@@ -74,6 +74,10 @@ parser.add_argument('--tune_topk',
                     type=int, 
                     default=1e10, 
                     help='Only finetune top N word embeddings.')
+parser.add_argument('--check-val-freq', 
+                    type=int, 
+                    default=1, 
+                    help='Run validation after number of epochs')
 parser.add_argument('--fine-tune-we', 
                     action='store_true', 
                     default=False, 
@@ -92,15 +96,13 @@ class Config:
         self.train_f, self.dev_f, self.test_f = (os.path.join(self.data_dir, o) for o in ['train.json','dev.json','test.json'])
         # self.proce_f = os.path.join(self.data_dir, 'dataset_preproc.p')
         if self.run100:
-            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_6_turns_100.p')
+            self.proce_f = os.path.join(self.data_dir, 'dataset_preproc_200.p')
+            self.embed_f = os.path.join(self.data_dir, 'embeddings_200.npy')
         else:
             self.proce_f = os.path.join(self.data_dir, 'dataset_preproc.p')
+            self.embed_f = os.path.join(self.data_dir, 'embeddings.npy')
         self.filtered_f = os.path.join(self.data_dir, 'data_all_argument.json')
         self.glove_f = os.path.join(self.data_dir, 'glove.6B.300d.txt')
-        self.embed_f = os.path.join(self.data_dir, 'embeddings.npy')
-        self.embed_f_train = os.path.join(self.data_dir, 'embeddings_train.npy')
-        self.embed_f_dev = os.path.join(self.data_dir, 'embeddings_dev.npy')
-        self.embed_f_test = os.path.join(self.data_dir, 'embeddings_test.npy')
         self.gen_f = os.path.join(self.data_dir, 'data_gen.json')
         self.original_f = 'ddo/debates.json'
         self.bert = 'bert-base-uncased'

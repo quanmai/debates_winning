@@ -25,21 +25,19 @@ FEAT_WH = 'Wh' # W*h
 
 class GATGRUCell(nn.Module):
     """ 
-        The cell is GRUCell-like, as the output of the GATGRU is not 100% used
-        for next argument, the GRU(counter, support) (or self.gruinter()) is.
+    The cell is GRUCell-like, as the output of the GATGRU is not 100% used
+    for next argument, the GRU(counter, support) (or self.gruinter()) is.
     """
-    def __init__(self, nfeats, nhids, nheads, alpha, dropout, res):
+    def __init__(self, nfeats, nhids, nheads, alpha, dropout, feat_name=HID_FEAT_NAME,res=False, update='both'):
         super(GATGRUCell, self).__init__()
         if config.v1 or config.v3:
             self.grucell = nn.GRUCell(nhids, nhids) #self.grucell(input, hidden)
         if config.v2 or config.v3:
             self.gruinter = nn.GRUCell(nhids, nhids)
         self.gat = GAT(nfeats, nhids, nheads, alpha, dropout)
-        self.cgat = CrossGAT2(nfeats, nhids, nheads, alpha, dropout, res)
-        # self.sgat = CrossGAT2(nfeats, nhids, nheads, alpha, dropout, res)
-        # self.cgat = CrossGAT(nhids, nhids, nheads, alpha, dropout, res)
-        self.sgat = CrossGAT(nhids, nhids, nheads, alpha, dropout, res)
+        self.cgat = CrossGAT(nhids, nhids, nheads, alpha, dropout, feat_name, res, update)
         self.updateFeature = HID_FEAT_NAME
+        self.update = update
 
     def forward(self, g, t):
         # x: feature update among intra-turn nodes
@@ -47,7 +45,7 @@ class GATGRUCell(nn.Module):
         if t > 0:
             node_idx = g.filter_nodes(lambda nodes: nodes.data['tid']==t)
             h = torch.zeros_like(x)
-            h = self.counter(g, t, node_idx, h)
+            h, h_src, src_nodes = self.counter(g, t, node_idx, h)
             # if t > 1:
             #     h_s, node_idx_sp, _ = self.sgat(g, t-2, itype='support')
             #     assert torch.all(node_idx.eq(node_idx_sp))
@@ -60,15 +58,25 @@ class GATGRUCell(nn.Module):
             if config.v2: #v2
                 hprime = 0.5*x + 0.5*h
             g.nodes[node_idx].data[self.updateFeature] = hprime
+            if self.update == 'both':
+                g.nodes[src_nodes].data[self.updateFeature] -= h_src
             return hprime
         return x
     
     def counter(self, g, t, node_idx, h):
-        h_c, node_c_idx, _ = self.cgat(g, t-1, itype='counter')
+        """ Feature for dest nodes 
+            h_src will be used to update src nodes (depends on self.update settings)
+        """
+        if self.update=='both':
+            h_c, h_src, dst_nodes, src_nodes = self.cgat(g, t-1, itype='counter')
+        else:
+            h_c, dst_nodes, src_nodes = self.cgat(g, t-1, itype='counter')
         _map = {x.item(): i for i, x in enumerate(node_idx)}
-        node_c_idx_map = torch.tensor([_map[i.item()] for i in node_c_idx])
+        node_c_idx_map = torch.tensor([_map[i.item()] for i in dst_nodes])
         h[node_c_idx_map] = h_c
-        return h
+        h_src = h_src if self.update =='both' else None
+        src_nodes = src_nodes if self.update =='both' else None
+        return h, h_src, src_nodes
 
     def support(self, g, t, node_idx, h):
         h_s, node_c_idx, _ = self.sgat(g, t-2, itype='counter')
@@ -78,87 +86,19 @@ class GATGRUCell(nn.Module):
         return h
 
 
-class GATGRUCell1(nn.Module):
-    """ 
-        The cell is GRUCell-like, as the output of the GATGRU is not 100% used
-        for next argument, the GRU(counter, support) (or self.gruinter()) is.
-    """
-    def __init__(self, nfeats, nhids, nheads, alpha, dropout, res):
-        super(GATGRUCell1, self).__init__()
-        self.grucell = nn.GRUCell(nhids, nhids) #self.grucell(input, hidden)
-        self.gruinter = nn.GRUCell(nhids, nhids)
-        self.gat = GAT(nfeats, nhids, nheads, alpha, dropout)
-        self.xgat = CrossGAT(nhids, nhids, nheads, alpha, dropout, res)
-        self.xgat1s = CrossGAT2(nfeats, nhids, nheads, alpha, dropout, res)
-        self.xgat1c = CrossGAT2(nfeats, nhids, nheads, alpha, dropout, res)
-        self.xgat2s = CrossGAT2(nfeats, nhids, nheads, alpha, dropout, res)
-        self.xgat2c = CrossGAT2(nfeats, nhids, nheads, alpha, dropout, res)
-        self.updateFeature = HID_FEAT_NAME
-
-    def forward(self, g, t):
-        # x: feature update among intra-turn nodes
-        x = self.gat(g, t)
-        if t > 0:
-            # h_c, node_idx, _ = self.xgat2(g, t-1, itype='counter')
-            h_c, node_idx, _ = self.xgat2c(g, t-1, itype='counter') if t%2 else self.xgat1c(g, t-1, itype='counter')
-            h = h_c
-            if t > 1:
-                # h_s, node_idx_sp, _ = self.xgat3(g, t-2, itype='support')
-                h_s, node_idx_sp, _ = self.xgat2s(g, t-2, itype='support') if t%2 else self.xgat1s(g, t-2, itype='support')
-                assert torch.all(node_idx.eq(node_idx_sp))
-                if config.v1: #v1
-                    h = config.counter_coeff*h_c+(1-config.counter_coeff)*h_s
-                if config.v2 or config.v3: #v2, v3
-                    h = self.gruinter(h_c, h_s)
-            if config.v1 or config.v3: #v1
-                hprime = self.grucell(x, h)
-            if config.v2: #v2
-                hprime = 0.5*x + 0.5*h
-            g.nodes[node_idx].data[self.updateFeature] = hprime
-            return hprime
-        return x
-    
-class GATGRUCell2(nn.Module):
-    """ 
-        The cell is GRUCell-like, as the output of the GATGRU is not 100% used
-        for next argument, the GRU(counter, support) (or self.gruinter()) is.
-    """
-    def __init__(self, nfeats, nhids, nheads, alpha, dropout, res):
-        super(GATGRUCell2, self).__init__()
-        self.grucell = nn.GRUCell(nhids, nhids) #self.grucell(input, hidden)
-        self.gruinter = nn.GRUCell(nhids, nhids)
-        self.gat = GAT(nfeats, nhids, nheads, alpha, dropout)
-        self.xgat = CrossGAT(nhids, nhids, nheads, alpha, dropout, res)
-        self.xgat2 = CrossGAT2(nfeats, nhids, nheads, alpha, dropout, res)
-        self.updateFeature = HID_FEAT_NAME
-
-    def forward(self, g, t):
-        # x: feature update among intra-turn nodes
-        x = self.gat(g, t)
-        if t > 0:
-            h_c1, node_idx, _ = self.xgat(g, t-1, itype='counter')
-            h_c2, _, _ = self.xgat2(g, t-1, itype='counter')
-            h1 = h_c1
-            h2 = h_c2
-            if t > 1:
-                h_s1, node_idx_sp, _ = self.xgat(g, t-2, itype='support')
-                h_s2, _, _ = self.xgat2(g, t-2, itype='support')
-                assert torch.all(node_idx.eq(node_idx_sp))
-                h1 = 0.5*h_c1 + 0.5*h_s1
-                h2 = 0.5*h_c2 + 0.5*h_s2
-            h_inter = 0.5*h1 + 0.5*h2
-            hprime = self.grucell(x, h_inter)
-            g.nodes[node_idx].data[self.updateFeature] = hprime
-            return hprime
-        return x
-
-
 class CrossGAT(nn.Module):
-    def __init__(self, nfeats, nhid, nheads, alpha, dropout, res):
+    def __init__(self, nfeats, nhid, nheads, alpha, dropout, feat_name, res, update):
         super(CrossGAT, self).__init__()
         self.attentions = nn.ModuleList([
-            DirectedGATLayer(nfeats, nhid//nheads, alpha=alpha, dropout=dropout, res=res) for _ in range(nheads)
+            DirectedGATLayer(nfeats, 
+                             nhid//nheads, 
+                             alpha=alpha, 
+                             dropout=dropout, 
+                             feat_name=feat_name, 
+                             res=res,
+                             update=update) for _ in range(nheads)
             ])
+        self.update = update
         if config.gat_layers != 1 :
             self.out_att = DirectedGATLayer(nhid, nhid, alpha=alpha, dropout=dropout)
 
@@ -170,28 +110,13 @@ class CrossGAT(nn.Module):
         edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+offset)
         src_nodes, dst_nodes = g.find_edges(edge_id)
         src_nodes, dst_nodes = src_nodes.unique(), dst_nodes.unique()
+
         h_itype = torch.cat([att(g, t, offset) for att in self.attentions], dim=1)
-        if config.gat_layers != 1 :
-            h_itype = self.out_att(g, t, offset, h=h_itype)
+        if self.update == 'both':
+            num_src_nodes = src_nodes.shape[0]
+            return h_itype[num_src_nodes:, :], h_itype[:num_src_nodes, :], dst_nodes, src_nodes
         return h_itype, dst_nodes, src_nodes
 
-class CrossGAT2(nn.Module):
-    def __init__(self, nfeats, nhid, nheads, alpha, dropout, res):
-        super(CrossGAT2, self).__init__()
-        self.attentions = nn.ModuleList([
-            DirectedGATLayer2(nfeats, nhid//nheads, alpha=alpha, dropout=dropout, res=res) for _ in range(nheads)
-            ])
-
-    def forward(self, g, t, itype):
-        """
-            itype (interaction type): counter/support
-        """
-        offset = config.EDGE_OFFSET[itype]
-        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+offset)
-        src_nodes, dst_nodes = g.find_edges(edge_id)
-        src_nodes, dst_nodes = src_nodes.unique(), dst_nodes.unique()
-        h_itype = torch.cat([att(g, t, offset) for att in self.attentions], dim=1)
-        return h_itype, dst_nodes, src_nodes
 
 class GAT(nn.Module):
     """ Take, aggregate, plug back """
@@ -222,7 +147,7 @@ class DirectedGATLayer(nn.Module):
 
         TODO (try later): Attention mechanism using Key, Query & Value matrices
     """
-    def __init__(self, in_features, out_features, alpha, dropout, res=False):
+    def __init__(self, in_features, out_features, alpha, dropout, feat_name = HID_FEAT_NAME, res=False, update='both'):
         super(DirectedGATLayer, self).__init__()
         self.out_features = out_features
         self.leakyrelu = nn.LeakyReLU(alpha)
@@ -239,7 +164,8 @@ class DirectedGATLayer(nn.Module):
         if res: #residual
             self.res_fc = nn.Linear(in_features, out_features)
         self.res = res
-        self.feat_name = HID_FEAT_NAME
+        self.feat_name = feat_name
+        self.update = update
 
     def forward(self, g, t, offset, h=None):
         """ Compute attention score from turn t to turn t-1 
@@ -249,18 +175,9 @@ class DirectedGATLayer(nn.Module):
         # g.find_edges(eid): Given an edge ID array, return the source and destination node ID array s and d. 
         # Only update representation of destination node
         src_nodes, dst_nodes = g.find_edges(edge_id)
-        # print(f'direct gat {node_id.shape=}')
-        # print(f'direct gat {edge_id.shape=}')
-        # breakpoint()
         src_nodes, dst_nodes = src_nodes.unique(), dst_nodes.unique()
-
-        # print(f'{g.batch_num_nodes()=}')
-        # print(f'{g.batch_num_edges()=}')
-        # print(f'{src_nodes=}')
-        # print(f'{dst_nodes=}')
-        # assert torch.max(src_nodes) < torch.min(dst_nodes)
         node_id = torch.cat((src_nodes, dst_nodes), dim=0)
-        # print(f'{node_id.shape=}')
+        node_updated = node_id if self.update == 'both' else dst_nodes
         if h is None: # 1 GAT Layer
             h = g.nodes[node_id].data[self.feat_name]
         else: # 2 layers
@@ -272,11 +189,11 @@ class DirectedGATLayer(nn.Module):
         Wh = self.W(h)
         g.nodes[node_id].data[FEAT_WH] = Wh
         g.apply_edges(self._edge_attn, edges=edge_id)
-        g.pull(v=dst_nodes, message_func=self._message_func, reduce_func=self._reduce_func)
+        g.pull(v=node_updated, message_func=self._message_func, reduce_func=self._reduce_func)
         g.nodes[node_id].data.pop(FEAT_WH)        
-        h_prime = g.nodes[dst_nodes].data.pop(HPRIME) # get h'
+        h_prime = g.nodes[node_updated].data.pop(HPRIME) # get h'
         if self.res:
-            h_dst = g.nodes[dst_nodes].data[self.feat_name]
+            h_dst = g.nodes[node_updated].data[self.feat_name]
             h_dst = F.dropout(h_dst, self.dropout, training=self.training)
             res = self.res_fc(h_dst)
             h_prime += res
@@ -307,65 +224,6 @@ class DirectedGATLayer(nn.Module):
         e_attn = self.leakyrelu(e)
         return {'e': e_attn} # assign to each edge
         # return {'e': e_attn, 'ew': edges.data['w']*e_attn} # assign to each edge
-
-class DirectedGATLayer2(nn.Module):
-    def __init__(self, in_features, out_features, alpha, dropout, res=False):
-        super(DirectedGATLayer2, self).__init__()
-        self.out_features = out_features
-        self.leakyrelu = nn.LeakyReLU(alpha)
-        self.W = nn.Linear(in_features, out_features)
-        nn.init.xavier_uniform_(self.W.weight, gain=1.414)
-        self.a = nn.Linear(2*out_features, 1)
-        nn.init.xavier_uniform_(self.a.weight, gain=1.414)
-        self.dropout = dropout
-        self.out_features = out_features
-        if res: #residual
-            self.res_fc = nn.Linear(in_features, out_features)
-        self.res = res
-        self.feat_name = FEAT_NAME
-
-    def forward(self, g, t, offset, h=None):
-        """ Compute attention score from turn t to turn t-1 
-        """
-        edge_id = g.filter_edges(lambda edges: edges.data['turn'] == t+offset) # cross_argument
-        src_nodes, dst_nodes = g.find_edges(edge_id)
-        src_nodes, dst_nodes = src_nodes.unique(), dst_nodes.unique()
-        node_id = torch.cat((src_nodes, dst_nodes), dim=0)
-        if h is None: # 1 GAT Layer
-            h = g.nodes[node_id].data[self.feat_name]
-        else: # 2 layers
-            h = torch.cat((g.nodes[src_nodes].data[self.feat_name], h), dim=0)
-        h = F.dropout(h, self.dropout, training=self.training)
-        Wh = self.W(h)
-        g.nodes[node_id].data[FEAT_WH] = Wh
-        g.apply_edges(self._edge_attn, edges=edge_id)
-        g.pull(v=dst_nodes, message_func=self._message_func, reduce_func=self._reduce_func)
-        g.nodes[node_id].data.pop(FEAT_WH)
-        
-        h_prime = g.nodes[dst_nodes].data.pop(HPRIME) # get h'
-        if self.res:
-            h_dst = g.nodes[dst_nodes].data[self.feat_name]
-            h_dst = F.dropout(h_dst, self.dropout, training=self.training)
-            res = self.res_fc(h_dst)
-            h_prime += res
-        return h_prime
-
-    def _reduce_func(self, nodes):
-        # mailbox: return the received messages
-        attention = F.softmax(nodes.mailbox['e'], dim=1)
-        h_prime = torch.sum(attention * nodes.mailbox[FEAT_WH], dim=1)
-        return {HPRIME: h_prime}
-
-    def _message_func(self, edges):
-        turn = edges.data['turn']
-        assert torch.all(turn >= 0)
-        return {FEAT_WH: edges.src[FEAT_WH], 'e': edges.data['e']}
-
-    def _edge_attn(self, edges):
-        Wh = torch.cat([edges.src[FEAT_WH], edges.dst[FEAT_WH]], dim=1) # [#edges, 2*out_features]
-        e = self.a(Wh)  # [#edges, 1]
-        e_attn = self.leakyrelu(e)
-        return {'e': e_attn} # assign to each edge
 
 
 

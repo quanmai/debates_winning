@@ -5,12 +5,16 @@ import pytorch_lightning as pl
 from utils.config import config
 from model.trainer import Train_GraphConversation
 from model.callbacks import EarlyStopping
+from pytorch_lightning.plugins import DDPPlugin
 import glob
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 if __name__ == "__main__":
     model = Train_GraphConversation(config)
     logger = pl.loggers.TensorBoardLogger(
-        save_dir='./run100' if config.run100 or config.test_ver else '.'
+        save_dir='./run100' if config.test_ver else '.'
+        # save_dir='./run100' if config.run100 or config.test_ver else '.'
     )
 
     ckpt_args = dict(
@@ -41,7 +45,7 @@ if __name__ == "__main__":
         fast_dev_run=False,
         max_epochs=config.epoch,
         callbacks=[early_stopping,ckpt_callback],
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=config.check_val_freq,
         logger=logger,
         log_every_n_steps=1,
         deterministic=False,
@@ -51,7 +55,7 @@ if __name__ == "__main__":
         # enable_progress_bar = False,
     )
     if isinstance(trainer_config['devices'], list) and len(trainer_config['devices']) > 1:
-        trainer_config['strategy'] = 'ddp'
+        trainer_config['strategy'] = "ddp_find_unused_parameters_false"
         print(trainer_config['strategy'])
     print(f'lr = {config.lr}')
     if config.accelerator=='gpu':

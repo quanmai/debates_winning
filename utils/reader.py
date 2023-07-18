@@ -113,11 +113,13 @@ def preprocess(debate_name):
             inter_adjac = []
             lemma_list = [] # for cross-arg lemma co-occur
             utter_list = [] # list[list[dict()]]
+            # long_sentence = False
             for round in debate['rounds']:
                 for side in round:
                     utter = [] # utter of 1 turn
                     lemma = [] # lemma 1 turn
                     arguments = side['text']
+                    # print(arguments)
                     arguments = cleaner(arguments)
                     doc = nlp(arguments)
                     sentences = [a.text for a in doc.sents] # list of sentences
@@ -125,8 +127,9 @@ def preprocess(debate_name):
                         # a = (sentence, len(sentence.split(' ')))
                         nlp_feat = extract_features(sentence)
                         # a = (len(nlp_feat['tokens']), nlp_feat['tokens'])
-                        # if len(nlp_feat['tokens']) > 100:
-                        #     print(a)
+                        if len(nlp_feat['tokens']) > 200:
+                            print(f'Long sentence in {name}')
+                            nlp_feat['tokens'] = nlp_feat['tokens'][:200]
                         utter.append(nlp_feat)
                         lemma.append(nlp_feat['lem'])
                     utter_list.append(utter)
@@ -339,13 +342,13 @@ def load_dataset():
         with open('title.txt','r') as rf:
             titles = rf.readlines()
         titles = [t.replace('\n','') for t in titles]
-        generate_data_3_splits(titles)
+        generate_data(titles)
 
     print('Loading dataset...')
     with open(config.proce_f, 'rb') as f:
-        train, dev, test, vocab_train, vocab_dev, vocab_test = pickle.load(f)
+        train, dev, test, vocab = pickle.load(f)
     f.close()
-    return train, dev, test, vocab_train, vocab_dev, vocab_test
+    return train, dev, test, vocab
 
 
 def build_vocab(tokens, glove_vocab):

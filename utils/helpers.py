@@ -50,21 +50,21 @@ def acc_score(y_true, y_pred):
     return torch.sum(y_true==y_pred) / y_pred.shape[0]
 
 def f1_score(y_true, y_pred):
-    y_true = torch.where(y_true <= 0., 0., 1.)
-    y_pred = torch.where(y_pred <= 0., 0., 1.)
-    # tp = (y_true * y_pred).sum().to(torch.float32)
-    # tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
-    # fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
-    # fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
+    # y_true = torch.where(y_true <= 0., 0., 1.)
+    # y_pred = torch.where(y_pred <= 0., 0., 1.)
+    tp = (y_true * y_pred).sum().to(torch.float32)
+    tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
+    fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
+    fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
 
-    # epsilon = 1e-7
+    epsilon = 1e-7
     
-    # precision = tp / (tp + fp + epsilon)
-    # recall = tp / (tp + fn + epsilon)
+    precision = tp / (tp + fp + epsilon)
+    recall = tp / (tp + fn + epsilon)
     
-    # f1 = 2* (precision*recall) / (precision + recall + epsilon)
-    # return f1
+    f1 = 2* (precision*recall) / (precision + recall + epsilon)
+    return f1
 
-    from sklearn.metrics import f1_score  
-    f1 = f1_score(y_true.cpu().data, y_pred.cpu()) 
-    return torch.tensor(f1)
+    # from sklearn.metrics import f1_score  
+    # f1 = f1_score(y_true.cpu().data, y_pred.cpu()) 
+    # return torch.tensor(f1)

@@ -7,7 +7,7 @@ if __name__ == "__main__":
     with open('title.txt','r') as rf:
         titles = rf.readlines()
     
-    titles = titles[:200]
+    # titles = titles[:200]
     titles = [t.replace('\n','') for t in titles]
     # titles = ['Animal-Testing-Joke-Debate/1/']
     # titles = ['Jesus-probably-did-not-exist/2/']
@@ -17,5 +17,6 @@ if __name__ == "__main__":
     # titles = ['Age-Of-Empires-is-better-than-Civilization/1/']
     # titles = ['Astrology-should-be-recognized-as-a-science./1/']
     # titles = ['Asking-for-a-new-9-11-investigation-is-highly-unreasonable/1/']
-    generate_data_3_splits(titles)
+    # titles = ['Gays-should-be-allowed-to-marry./1/']
+    generate_data(titles)
     # get_stats()

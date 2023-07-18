@@ -67,11 +67,11 @@ class DebateGraph(nn.Module):
             for turn in range(self.turns):
                 node_idx = g.filter_nodes(lambda nodes: nodes.data['tid']==turn)
                 h = g.nodes[node_idx].data[feat]
-                attn = g.nodes[node_idx].data['attn_score']
-                attn = attn.squeeze()
-                if attn_softmax:
-                    attn = torch.nn.functional.softmax(attn, dim=0)
-                h = h*attn.unsqueeze(-1)
+                # attn = g.nodes[node_idx].data['attn_score']
+                # attn = attn.squeeze()
+                # if attn_softmax:
+                #     attn = torch.nn.functional.softmax(attn, dim=0)
+                # h = h*attn.unsqueeze(-1)
                 if turn % 2 == 0:
                     readout_s1 += _helper(h, op1)
                 else:

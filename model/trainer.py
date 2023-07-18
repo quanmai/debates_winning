@@ -14,13 +14,14 @@ class Train_GraphConversation(LightningModule):
         super().__init__()
         self.config = config
         # train_data, val_data, test_data, vocab = load_dataset()
-        train_data, val_data, test_data, vocab_train, vocab_dev, vocab_test= load_dataset()
-        self.train_data = Dataset(train_data, vocab_train, config.embed_f_train)
-        self.val_data = Dataset(val_data, vocab_dev, config.embed_f_dev)
-        self.test_data = Dataset(test_data, vocab_test, config.embed_f_test)
-        self.model = GraphGRUArgument(config)
-        self.loss = (PairBCELoss() 
-                     if config.loss == 'pair' 
+        train_data, val_data, test_data, vocab= load_dataset()
+        self.train_data = Dataset(train_data, vocab)
+        self.val_data = Dataset(val_data, vocab)
+        self.test_data = Dataset(test_data, vocab)
+        self.model = GraphGRUArgument(config, vocab)
+        self.margin = 0.5 if config.loss == 'ranking' else 0
+        self.loss = (PairBCELoss() if config.loss == 'pair'
+                     else torch.torch.nn.MarginRankingLoss(margin=self.margin) if config.loss == 'ranking'
                      else torch.nn.BCEWithLogitsLoss())
         self.acc_metric = acc_score
         self.f1_metric = f1_score
@@ -45,11 +46,12 @@ class Train_GraphConversation(LightningModule):
     def training_step(self, batch, batch_idx):
         y = batch['label']
         s1, s2 = self(batch)
-        if self.config.loss == 'pair':
+        if self.config.loss == 'pair' or self.config.loss == 'ranking':
             if s2.shape != y.shape:
                 s1 = torch.reshape(s1, (y.shape))
                 s2 = torch.reshape(s2, (y.shape))
-            loss = self.loss(s1, s2, y)
+            _y = torch.where(y == 0., -1., 1.)
+            loss = self.loss(s1, s2, _y)
         else: #binary
             s2 = torch.reshape(s2, (y.shape))
             loss = self.loss(s2,y.float())
@@ -58,12 +60,13 @@ class Train_GraphConversation(LightningModule):
     def validation_step(self, batch, batch_idx):
         y = batch['label']
         s1, s2 = self(batch)
-        if self.config.loss == 'pair':
+        if self.config.loss == 'pair' or self.config.loss == 'ranking':
             if s2.shape != y.shape:
                 s1 = torch.reshape(s1, (y.shape))
                 s2 = torch.reshape(s2, (y.shape))
-            loss = self.loss(s1, s2, y)
-            pred = torch.where(s1>=s2, 1., -1.)
+            _y = torch.where(y == 0., -1., 1.)
+            loss = self.loss(s1, s2, _y)
+            pred = torch.where(s1+self.margin>=s2, 1., 0.)
         else:
             s2 = torch.reshape(s2, (y.shape))
             loss = self.loss(s2,y.float())
@@ -81,12 +84,13 @@ class Train_GraphConversation(LightningModule):
         y = batch['label'] 
         s1, s2 = self(batch)
 
-        if self.config.loss == 'pair':
+        if self.config.loss == 'pair' or self.config.loss == 'ranking':
             if s2.shape != y.shape:
                 s1 = torch.reshape(s1, (y.shape))
                 s2 = torch.reshape(s2, (y.shape))
-            loss = self.loss(s1, s2, y)
-            pred = torch.where(s1>=s2, 1., -1.)
+            _y = torch.where(y == 0., -1., 1.)
+            loss = self.loss(s1, s2, _y)
+            pred = torch.where(s1+self.margin>=s2, 1., 0.)
             print(f's1: {s1}')
         else:
             s2 = torch.reshape(s2, (y.shape))
@@ -140,15 +144,15 @@ class Train_GraphConversation(LightningModule):
 
     def train_dataloader(self):
         train_loader = DataLoader(self.train_data, shuffle=True, num_workers=self.config.num_workers, \
-                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False, persistent_workers=True)
         return train_loader
 
     def val_dataloader(self):
         val_loader = DataLoader(self.val_data, shuffle=False, num_workers=self.config.num_workers, \
-                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False, persistent_workers=True)
         return val_loader  
 
     def test_dataloader(self):
         test_loader = DataLoader(self.test_data, shuffle=False, num_workers=self.config.num_workers, \
-                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=True)
+                        batch_size=self.config.batch_size, collate_fn=collate_fn, pin_memory=False, persistent_workers=True)
         return test_loader

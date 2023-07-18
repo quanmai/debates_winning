@@ -27,7 +27,7 @@ class uLSTM(nn.Module):
                            dropout=config.rnn_dropout,
                            bidirectional=True)
         self.linear = nn.Linear(2*config.rnn_hidden_dim, config.nfeat) # map lstm dim to hid dim
-        self.pos_emb, self.ner_emb = embeddings
+        self.wrd_emb, self.pos_emb, self.ner_emb = embeddings
         self.in_drop = nn.Dropout(config.input_dropout)
         self.rnn_drop = nn.Dropout(config.rnn_dropout)
 
@@ -38,10 +38,10 @@ class uLSTM(nn.Module):
         return _out # (BxTxN) x M x 2 x H_
 
     def forward(self, batch):
-        words, masks, pos, ner, wembs = batch
-        # word_emb = self.wrd_emb(words)
-        # embs = [word_emb]
-        embs = [wembs]
+        words, masks, pos, ner = batch
+        word_emb = self.wrd_emb(words)
+        embs = [word_emb]
+        # embs = [wembs]
         if self.config.pos_emb_dim > 0:
             embs += [self.pos_emb(pos)]
         if self.config.ner_emb_dim > 0:
@@ -54,22 +54,23 @@ class uLSTM(nn.Module):
 
 
 class UtterEncoder(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, vocab):
         super().__init__()
         self.config = config
-        # if self.config.fine_tune_we:
-        #     self.wrd_emb = nn.Embedding(
-        #         num_embeddings=self.vocab.num_words,
-        #         embedding_dim=self.config.emb_dim
-        #         )   
-        #     self._init_word_embedding(np.load(open(config.embed_f, 'rb'),
-        #                                     allow_pickle=True))
-        # else:
-        #     ww = torch.from_numpy(np.load(
-        #                             open(config.embed_f, 'rb'),
-        #                             allow_pickle=True)
-        #                             ).float()
-        #     self.wrd_emb = nn.Embedding.from_pretrained(ww)
+        self.vocab = vocab
+        if self.config.fine_tune_we:
+            self.wrd_emb = nn.Embedding(
+                num_embeddings=self.vocab.num_words,
+                embedding_dim=self.config.emb_dim
+                )   
+            self._init_word_embedding(np.load(open(config.embed_f, 'rb'),
+                                            allow_pickle=True))
+        else:
+            ww = torch.from_numpy(np.load(
+                                    open(config.embed_f, 'rb'),
+                                    allow_pickle=True)
+                                    ).float()
+            self.wrd_emb = nn.Embedding.from_pretrained(ww)
         pos_emb = nn.Embedding(
                 num_embeddings=len(constant.POS),
                 embedding_dim=self.config.pos_emb_dim
@@ -78,7 +79,7 @@ class UtterEncoder(nn.Module):
                 num_embeddings=len(constant.NER),
                 embedding_dim=self.config.ner_emb_dim
             ) if self.config.ner_emb_dim > 0 else None
-        self.embeddings = (pos_emb, ner_emb)
+        self.embeddings = (self.wrd_emb, pos_emb, ner_emb)
         self.lstm = uLSTM(config, self.embeddings)
 
     # def _init_word_embedding(self, wv_emb):
@@ -95,14 +96,15 @@ class UtterEncoder(nn.Module):
     #         print('Finetune all word embeddings')
     
     def forward(self, batch):
-        conv, masks, ner, pos, wembs = batch['utter'], batch['mask'], batch['ner'], batch['pos'], batch['wembs']
-        B, T, N, M, H = wembs.shape
+        conv, masks, ner, pos = batch['utter'], batch['mask'], batch['ner'], batch['pos']
+        B, T, N, M = conv.shape
         conv = conv.view(-1, M)   # -> (BxTxN, M)
         masks = masks.view(-1, M)
         ner = ner.view(-1, M)
         pos = pos.view(-1, M)
-        wembs = wembs.view(-1, M, H)
-        h = self.lstm((conv, masks, pos, ner, wembs)) # (BxTxN) x M x H
-        h = torch.mean(h, dim=1) # (BxTxN)x H
+        # wembs = wembs.view(-1, M, H)
+        h = self.lstm((conv, masks, pos, ner)) # (BxTxN) x M x H
+        h = torch.max(h, dim=1)[0] # (BxTxN)x H
+        # h = torch.mean(h, dim=1) # (BxTxN)x H
         h = h.reshape(B, T, N, -1)
         return h
