@@ -110,7 +110,8 @@ def preprocess(debate_name):
             label = get_label(debate)
             debate_info = {}
             intra_adjac = []
-            inter_adjac = []
+            inter_adjac = [] # counter adj matrix
+            spprt_adjac = [] # support adj matrix
             lemma_list = [] # for cross-arg lemma co-occur
             utter_list = [] # list[list[dict()]]
             # long_sentence = False
@@ -143,11 +144,15 @@ def preprocess(debate_name):
                 if i + 1 < len(lemma_list):
                     inter = adj_matrix(lem, lemma_list[i+1], co=2)
                     inter_adjac.append(inter)
+                if i + 2 < len(lemma_list):
+                    spprt = adj_matrix(lem, lemma_list[i+2], co=2)
+                    spprt_adjac.append(spprt)
             debate_info['utter'] = utter_list # T x N x M
             debate_info['title'] = debate['title']
             debate_info['label'] = label
             debate_info['intra'] = intra_adjac
             debate_info['inter'] = inter_adjac
+            debate_info['spprt'] = spprt_adjac
             D.append(debate_info)
 
             T += [tok 

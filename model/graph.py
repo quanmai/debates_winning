@@ -12,7 +12,11 @@ class DebateGraph(nn.Module):
                                     nheads=config.nhead, 
                                     alpha= config.alpha, 
                                     dropout=config.dropout,
-                                    res=False)
+                                    is_counter=config.is_counter,
+                                    is_support=config.is_support,
+                                    res=False,
+                                    update='dst')
+        self.turn_emb = nn.Embedding(6, 30)
         self.config = config
         self.turns = 6
 
@@ -23,8 +27,9 @@ class DebateGraph(nn.Module):
         B, T, N, _ = batch['utter'].shape
         self.set_node_feature(g, nmask, nodeidx, (B, T, N), emb)
         self.propagation(g)
-        self.pooling(g)
-        x1, x2 = self.read_out_loud(g)
+        self.pooling(g,'ex')
+        x1, x2 = self.counter_score(g, 3)
+        # x1, x2 = self.read_out_loud(g, feat='hp')
         return x1, x2
 
     def propagation(self, g):
@@ -59,10 +64,11 @@ class DebateGraph(nn.Module):
         gl = dgl.unbatch(graph)
         res1 = [] # list of tensor
         res2 = [] # list of tensor
+        nlast = self.config.nhid if feat=='hp' else self.config.nfeat
         for g in gl:
             # turns = torch.max(g.ndata['ids']).item()+1
-            readout_s1 = torch.zeros((1, self.config.nhid), device=self.config.device)
-            readout_s2 = torch.zeros((1, self.config.nhid), device=self.config.device)
+            readout_s1 = torch.zeros((1, nlast), device=self.config.device)
+            readout_s2 = torch.zeros((1, nlast), device=self.config.device)
 
             for turn in range(self.turns):
                 node_idx = g.filter_nodes(lambda nodes: nodes.data['tid']==turn)
@@ -87,3 +93,21 @@ class DebateGraph(nn.Module):
         def _reducer(nodes):
             return {'attn_score': nodes.mailbox[attn].sum(1)}
         g.update_all(dgl.function.copy_e(attn, attn), reduce_func=_reducer)
+
+    def counter_score(self, g, k=3):
+        def get_score(graph, uid):
+            user = graph.filter_nodes(lambda nodes: nodes.data['uid']==uid)
+            score = graph.nodes[user].data['attn_score']
+            top_score = (torch.topk(score, k, dim=0)[1]).squeeze()
+            return [graph.nodes[i].data['hp'] for i in top_score]
+        x1, x2 = [], []
+        for graph in dgl.unbatch(g):
+            pro = torch.cat(get_score(graph, 0),
+                            dim=1)
+            con = torch.cat(get_score(graph, 1),
+                            dim=1)
+            x1.append(pro)
+            x2.append(con)
+        x1 = torch.cat(x1, dim=0).unsqueeze(1)
+        x2 = torch.cat(x2, dim=0).unsqueeze(1)
+        return x1, x2

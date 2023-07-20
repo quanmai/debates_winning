@@ -11,6 +11,18 @@ class PairBCELoss_bak(_Loss):
         loss = torch.log(1 + torch.exp(-z))
         return torch.mean(loss)
     
+class CustomRankingLoss(_Loss):
+    def __init__(self, margin):
+        super(CustomRankingLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, score1, score2, y):
+        pos_logit = (score1 + self.margin) * y
+        neg_logit = score2 * y
+        z = pos_logit - neg_logit
+        loss = torch.maximum(torch.tensor(0), -z)
+        return torch.mean(loss)
+
 class PairBCELoss(_Loss):
     """ Pairwise Logistic function """
     def __init__(self):

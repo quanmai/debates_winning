@@ -1,21 +1,17 @@
 #!/bin/sh
 
-CUDA_VISIBLE_DEVICES=5 python main.py \
-                    --batch-size 128 \
+CUDA_VISIBLE_DEVICES=6 python main.py \
                     --nhid 32 \
-                    --patience 100 \
-                    --accelerator gpu \
-                    --epoch 200 \
-                    --is-counter \
-                    --is-support \
+                    --patience 5 \
+                    --epoch 100 \
                     --lr 1e-04 \
-                    --scheduler exp \
+                    --batch-size 4 \
+                    --nhead 4 \
                     --loss pair \
                     --v1 \
-                    --embedding first \
-                    --node-encoder-direction out \
-                    --res \
-                    --test-ver 631 \
+                    --accelerator gpu \
+                    --check-val-freq 1 \
+                    --is-counter \
                     # --user-emb \
                     # --turn-emb \
                     # --pos-emb \

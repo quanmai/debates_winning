@@ -1,6 +1,6 @@
 #!/bin/sh
 
-CUDA_VISIBLE_DEVICES=6 python main.py \
+CUDA_VISIBLE_DEVICES=5 python main.py \
         --nhid 32 \
         --patience 10 \
         --epoch 100 \
@@ -10,9 +10,9 @@ CUDA_VISIBLE_DEVICES=6 python main.py \
         --loss pair \
         --v1 \
         --accelerator gpu \
-        --run100 \
-        --loss ranking \
         --check-val-freq 1 \
+        --is-counter \
+        --is-support \
+        --run100 \
         # --test-ver 902 \
         # --fine-tune-we \
-        # CUDA_VISIBLE_DEVICES=5 

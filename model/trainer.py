@@ -1,7 +1,7 @@
 import torch
 from utils.reader import load_dataset
 from utils.loader import Dataset, collate_fn
-from utils.loss import PairBCELoss
+from utils.loss import PairBCELoss, CustomRankingLoss
 from model.model import GraphGRUArgument
 from utils.helpers import acc_score, f1_score
 from torch.utils.data import DataLoader
@@ -21,6 +21,7 @@ class Train_GraphConversation(LightningModule):
         self.model = GraphGRUArgument(config, vocab)
         self.margin = 0.5 if config.loss == 'ranking' else 0
         self.loss = (PairBCELoss() if config.loss == 'pair'
+                     else CustomRankingLoss(margin=0.2) if config.loss == 'cranking'
                      else torch.torch.nn.MarginRankingLoss(margin=self.margin) if config.loss == 'ranking'
                      else torch.nn.BCEWithLogitsLoss())
         self.acc_metric = acc_score
@@ -46,7 +47,7 @@ class Train_GraphConversation(LightningModule):
     def training_step(self, batch, batch_idx):
         y = batch['label']
         s1, s2 = self(batch)
-        if self.config.loss == 'pair' or self.config.loss == 'ranking':
+        if self.config.loss != 'binary':
             if s2.shape != y.shape:
                 s1 = torch.reshape(s1, (y.shape))
                 s2 = torch.reshape(s2, (y.shape))
@@ -60,13 +61,13 @@ class Train_GraphConversation(LightningModule):
     def validation_step(self, batch, batch_idx):
         y = batch['label']
         s1, s2 = self(batch)
-        if self.config.loss == 'pair' or self.config.loss == 'ranking':
+        if self.config.loss != 'binary':
             if s2.shape != y.shape:
                 s1 = torch.reshape(s1, (y.shape))
                 s2 = torch.reshape(s2, (y.shape))
             _y = torch.where(y == 0., -1., 1.)
             loss = self.loss(s1, s2, _y)
-            pred = torch.where(s1+self.margin>=s2, 1., 0.)
+            pred = torch.where(s1>=s2, 1., 0.)
         else:
             s2 = torch.reshape(s2, (y.shape))
             loss = self.loss(s2,y.float())
@@ -84,13 +85,13 @@ class Train_GraphConversation(LightningModule):
         y = batch['label'] 
         s1, s2 = self(batch)
 
-        if self.config.loss == 'pair' or self.config.loss == 'ranking':
+        if self.config.loss != 'binary':
             if s2.shape != y.shape:
                 s1 = torch.reshape(s1, (y.shape))
                 s2 = torch.reshape(s2, (y.shape))
             _y = torch.where(y == 0., -1., 1.)
             loss = self.loss(s1, s2, _y)
-            pred = torch.where(s1+self.margin>=s2, 1., 0.)
+            pred = torch.where(s1>=s2, 1., 0.)
             print(f's1: {s1}')
         else:
             s2 = torch.reshape(s2, (y.shape))

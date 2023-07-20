@@ -38,7 +38,6 @@ class Dataset(data.Dataset):
                                 for o in u]         # each sent
                                 for u in utter]       # each turn
         
-        graph = self._create_graph(intra, inter, utter)
         # nsents: number of sentences in each turn: list[int]
         # e.g., [40, 31, 24, 52, 90, 12]
         nsents = [len(u) for u in utter] # list[int], len(list) = n
@@ -49,12 +48,12 @@ class Dataset(data.Dataset):
 
         maxnsents = max(nsents)
         maxntoks = max([max(a) for a in ntoks])
-
         # a = (maxntoks, title)
         # print(a)
         # wembs = [[self.wembs[o] # each token
         #             for o in u]        # each sent
         #             for u in tok]    # each turn
+        graph = self._create_graph(intra, inter, utter)
 
         return dict(
             utter=tok,
@@ -88,6 +87,7 @@ class Dataset(data.Dataset):
         Add nodes to graph based on their turn and offset
         """
         src, dst = np.nonzero(adj_matrix)
+        a = src, dst
         num_edges = src.shape[0]
         edge_offset = constant.EDGE_OFFSET[edge_type]
         edge_feature = dict(
@@ -115,9 +115,11 @@ class Dataset(data.Dataset):
             # intra-arg edge
             self._add_edge(G, attn, o, o, t, 'self')
             # cross-arg edge
-            if t < T - 1:
+            if t < T - 1 and config.is_counter:
                 self._add_edge(G, inter_edge[t], o, offset[t], t, 'counter')
-        
+            # if t < T - 2 and config.is_support:
+            #     self._add_edge(G, inter_edge[t], o, offset[t], t, 'support')
+
         # check if graph is correctly constructed
         assert G.num_nodes() == offset[-1], \
                 f"Fail constructing graph, #nodes = {G.num_nodes()}, get {offset[-1]} !"

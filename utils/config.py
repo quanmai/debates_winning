@@ -26,7 +26,7 @@ parser.add_argument('--turn-emb', action='store_true', default=False, help='Turn
 parser.add_argument('--user-emb', action='store_true', default=False, help='User Embedding')
 parser.add_argument('--embedding', type=str, choices=['first', 'second', ''], default='', help='Node encoder type')
 parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'adamw', 'adamax'], default='adam', help='Optimizer: sgd, adamw, adamax, adam')
-parser.add_argument('--loss', type=str, choices=['pair', 'binary', 'ranking'], default='pair', help='Loss types')
+parser.add_argument('--loss', type=str, choices=['pair', 'binary', 'ranking', 'cranking'], default='pair', help='Loss types')
 parser.add_argument('--mode', type=str, choices=['bidirection', 'unidirection'], default='unidirection', help='Mode types')
 parser.add_argument('--scheduler', type=str, choices=['', 'exp', 'cyclic'], default='', help='use scheduler')
 parser.add_argument('--lr_decay', type=float, default=0.98, help='scheduler decay')

@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 # from pytorch_lightning import Trainer
 from utils.config import config
 from model.trainer import Train_GraphConversation
-from model.callbacks import EarlyStopping
+#from model.callbacks import EarlyStopping
 from pytorch_lightning.plugins import DDPPlugin
 import glob
 import torch.multiprocessing
@@ -13,8 +13,8 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 if __name__ == "__main__":
     model = Train_GraphConversation(config)
     logger = pl.loggers.TensorBoardLogger(
-        save_dir='./run100' if config.test_ver else '.'
-        # save_dir='./run100' if config.run100 or config.test_ver else '.'
+        # save_dir='./run100' if config.test_ver else '.'
+        save_dir='./run100' if config.run100 or config.test_ver else '.'
     )
 
     ckpt_args = dict(
